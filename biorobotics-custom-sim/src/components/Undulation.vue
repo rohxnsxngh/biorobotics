@@ -1,98 +1,175 @@
 <template>
-    <div class="fish-robotics-container">
-      <h1 class="title">Fish Robotics Joint Tracking System</h1>
-      
-      <div class="layout">
-        <div class="simulation-panel">
-          <h2>Simulation</h2>
-          <canvas 
-            ref="canvas" 
-            width="600" 
-            height="400" 
-            class="simulation-canvas"
-          ></canvas>
+    <div class="bg-gray-100 min-h-screen">
+      <div class="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+        <h1 class="text-3xl font-bold text-gray-900 mb-8 border-b border-gray-200 pb-4">
+          Fish Robotics Joint Tracking System
+        </h1>
+        
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <!-- Simulation Panel -->
+          <div class="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-100">
+              <h2 class="text-xl font-semibold text-gray-800">Simulation</h2>
+            </div>
+            <div class="p-6">
+              <canvas 
+                ref="canvas" 
+                width="600" 
+                height="400" 
+                class="w-full border border-gray-200 rounded"
+              ></canvas>
+              
+              <div class="flex justify-between mt-6">
+                <button 
+                  @click="toggleRunning" 
+                  :class="[
+                    'px-5 py-2 rounded-md text-sm font-medium shadow-sm transition-colors',
+                    running 
+                      ? 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500' 
+                      : 'bg-green-600 text-white hover:bg-green-700 focus:ring-green-500'
+                  ]"
+                >
+                  {{ running ? 'Pause' : 'Resume' }}
+                </button>
+                
+                <button 
+                  @click="resetSimulation" 
+                  class="px-5 py-2 bg-gray-800 text-white rounded-md text-sm font-medium shadow-sm hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-700 transition-colors"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+          </div>
           
-          <div class="button-container">
-            <button 
-              @click="toggleRunning" 
-              :class="['control-button', running ? 'pause' : 'resume']"
-            >
-              {{ running ? 'Pause' : 'Resume' }}
-            </button>
-            
-            <button 
-              @click="resetSimulation" 
-              class="control-button reset"
-            >
-              Reset
-            </button>
+          <!-- Controls Panel -->
+          <div class="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-100">
+              <h2 class="text-xl font-semibold text-gray-800">Controls</h2>
+            </div>
+            <div class="p-6">
+              <div class="mb-6">
+                <div class="flex justify-between mb-2">
+                  <label class="block text-sm font-medium text-gray-700">
+                    Frequency
+                  </label>
+                  <span class="text-sm text-gray-500">{{ frequency.toFixed(1) }}</span>
+                </div>
+                <input 
+                  type="range" 
+                  min="0.1" 
+                  max="3" 
+                  step="0.1" 
+                  v-model.number="frequency" 
+                  class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-gray-800"
+                />
+              </div>
+              
+              <div class="mb-6">
+                <div class="flex justify-between mb-2">
+                  <label class="block text-sm font-medium text-gray-700">
+                    Amplitude (degrees)
+                  </label>
+                  <span class="text-sm text-gray-500">{{ amplitude }}</span>
+                </div>
+                <input 
+                  type="range" 
+                  min="5" 
+                  max="60" 
+                  step="1" 
+                  v-model.number="amplitude" 
+                  class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-gray-800"
+                />
+              </div>
+              
+              <div class="mb-6">
+                <div class="flex justify-between mb-2">
+                  <label class="block text-sm font-medium text-gray-700">
+                    Phase Shift
+                  </label>
+                  <span class="text-sm text-gray-500">{{ phaseShift.toFixed(1) }}</span>
+                </div>
+                <input 
+                  type="range" 
+                  min="0.1" 
+                  max="1.5" 
+                  step="0.1" 
+                  v-model.number="phaseShift" 
+                  class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-gray-800"
+                />
+              </div>
+  
+              <div class="mt-8 p-4 bg-gray-50 rounded border border-gray-200">
+                <h3 class="text-sm font-medium text-gray-700 mb-2">Joint System Legend</h3>
+                <div class="flex items-center space-x-6">
+                  <div class="flex items-center">
+                    <span class="inline-block w-3 h-3 rounded-full bg-red-600 mr-2"></span>
+                    <span class="text-xs text-gray-600">Active Joint</span>
+                  </div>
+                  <div class="flex items-center">
+                    <span class="inline-block w-3 h-3 rounded-full bg-blue-600 mr-2"></span>
+                    <span class="text-xs text-gray-600">Passive Joint</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         
-        <div class="controls-panel">
-          <h2>Controls</h2>
-          
-          <div class="slider-control">
-            <label>
-              Frequency: {{ frequency.toFixed(1) }}
-            </label>
-            <input 
-              type="range" 
-              min="0.1" 
-              max="3" 
-              step="0.1" 
-              v-model.number="frequency" 
-            />
+        <!-- Chart Panel -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden mb-6">
+          <div class="px-6 py-4 border-b border-gray-100">
+            <h2 class="text-xl font-semibold text-gray-800">Joint Angle Tracking Data</h2>
           </div>
-          
-          <div class="slider-control">
-            <label>
-              Amplitude (degrees): {{ amplitude }}
-            </label>
-            <input 
-              type="range" 
-              min="5" 
-              max="60" 
-              step="1" 
-              v-model.number="amplitude" 
-            />
-          </div>
-          
-          <div class="slider-control">
-            <label>
-              Phase Shift: {{ phaseShift.toFixed(1) }}
-            </label>
-            <input 
-              type="range" 
-              min="0.1" 
-              max="1.5" 
-              step="0.1" 
-              v-model.number="phaseShift" 
-            />
+          <div class="p-6">
+            <div class="h-64">
+              <LineChart 
+                :chart-data="chartData" 
+                :options="chartOptions" 
+              />
+            </div>
           </div>
         </div>
-      </div>
-      
-      <div class="chart-panel">
-        <h2>Joint Angle Tracking Data</h2>
-        <div class="chart-container">
-          <LineChart 
-            :chart-data="chartData" 
-            :options="chartOptions" 
-          />
+        
+        <!-- Notes Panel -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+          <div class="px-6 py-4 border-b border-gray-100">
+            <h2 class="text-xl font-semibold text-gray-800">Implementation Notes</h2>
+          </div>
+          <div class="p-6">
+            <ul class="space-y-2 text-sm text-gray-600">
+              <li class="flex items-start">
+                <span class="inline-block w-1.5 h-1.5 rounded-full bg-gray-800 mt-1.5 mr-3 flex-shrink-0"></span>
+                <span>This simulation represents the joints that would have AprilTags attached in the physical setup</span>
+              </li>
+              <li class="flex items-start">
+                <span class="inline-block w-1.5 h-1.5 rounded-full bg-gray-800 mt-1.5 mr-3 flex-shrink-0"></span>
+                <span>Red circles represent active joints (motorized/actuated)</span>
+              </li>
+              <li class="flex items-start">
+                <span class="inline-block w-1.5 h-1.5 rounded-full bg-gray-800 mt-1.5 mr-3 flex-shrink-0"></span>
+                <span>Blue circles represent passive joints (moved by the body's inertia)</span>
+              </li>
+              <li class="flex items-start">
+                <span class="inline-block w-1.5 h-1.5 rounded-full bg-gray-800 mt-1.5 mr-3 flex-shrink-0"></span>
+                <span>The graph tracks joint angles over time, which is what you would analyze from AprilTag data</span>
+              </li>
+              <li class="flex items-start">
+                <span class="inline-block w-1.5 h-1.5 rounded-full bg-gray-800 mt-1.5 mr-3 flex-shrink-0"></span>
+                <span>Adjust parameters to simulate different swimming patterns (anguilliform, carangiform, etc.)</span>
+              </li>
+              <li class="flex items-start">
+                <span class="inline-block w-1.5 h-1.5 rounded-full bg-gray-800 mt-1.5 mr-3 flex-shrink-0"></span>
+                <span>For a full 3D implementation, this could be expanded using Three.js and Rapier.js as suggested</span>
+              </li>
+            </ul>
+          </div>
         </div>
-      </div>
-      
-      <div class="notes-panel">
-        <h2>Implementation Notes</h2>
-        <ul>
-          <li>This simulation represents the joints that would have AprilTags attached in the physical setup</li>
-          <li>Red circles represent active joints (motorized/actuated)</li>
-          <li>Blue circles represent passive joints (moved by the body's inertia)</li>
-          <li>The graph tracks joint angles over time, which is what you would analyze from AprilTag data</li>
-          <li>Adjust parameters to simulate different swimming patterns (anguilliform, carangiform, etc.)</li>
-          <li>For a full 3D implementation, this could be expanded using Three.js and Rapier.js as suggested</li>
-        </ul>
+  
+        <!-- Footer -->
+        <div class="mt-8 text-center text-xs text-gray-400">
+          <p>Biorobotics Fish Locomotion Tracking System • v1.0</p>
+        </div>
       </div>
     </div>
   </template>
@@ -130,38 +207,56 @@
         datasets: [
           {
             label: 'Active Joint 1',
-            backgroundColor: 'rgba(255, 0, 0, 0.2)',
-            borderColor: 'rgb(255, 0, 0)',
+            backgroundColor: 'rgba(220, 38, 38, 0.1)',
+            borderColor: 'rgb(220, 38, 38)',
+            borderWidth: 2,
+            pointRadius: 1,
+            tension: 0.4,
             data: []
           },
           {
             label: 'Active Joint 2',
-            backgroundColor: 'rgba(255, 102, 102, 0.2)',
-            borderColor: 'rgb(255, 102, 102)',
+            backgroundColor: 'rgba(220, 38, 38, 0.05)',
+            borderColor: 'rgb(239, 68, 68)',
+            borderWidth: 2,
+            pointRadius: 1,
+            tension: 0.4,
             data: []
           },
           {
             label: 'Active Joint 3',
-            backgroundColor: 'rgba(255, 170, 170, 0.2)',
-            borderColor: 'rgb(255, 170, 170)',
+            backgroundColor: 'rgba(220, 38, 38, 0.02)',
+            borderColor: 'rgb(248, 113, 113)',
+            borderWidth: 2,
+            pointRadius: 1,
+            tension: 0.4,
             data: []
           },
           {
             label: 'Passive Joint 1',
-            backgroundColor: 'rgba(0, 0, 255, 0.2)',
-            borderColor: 'rgb(0, 0, 255)',
+            backgroundColor: 'rgba(37, 99, 235, 0.1)',
+            borderColor: 'rgb(37, 99, 235)',
+            borderWidth: 2,
+            pointRadius: 1,
+            tension: 0.4,
             data: []
           },
           {
             label: 'Passive Joint 2',
-            backgroundColor: 'rgba(102, 102, 255, 0.2)',
-            borderColor: 'rgb(102, 102, 255)',
+            backgroundColor: 'rgba(37, 99, 235, 0.05)',
+            borderColor: 'rgb(59, 130, 246)',
+            borderWidth: 2,
+            pointRadius: 1,
+            tension: 0.4,
             data: []
           },
           {
             label: 'Passive Joint 3',
-            backgroundColor: 'rgba(170, 170, 255, 0.2)',
-            borderColor: 'rgb(170, 170, 255)',
+            backgroundColor: 'rgba(37, 99, 235, 0.02)',
+            borderColor: 'rgb(96, 165, 250)',
+            borderWidth: 2,
+            pointRadius: 1,
+            tension: 0.4,
             data: []
           }
         ]
@@ -170,17 +265,56 @@
       const chartOptions = {
         responsive: true,
         maintainAspectRatio: false,
+        interaction: {
+          mode: 'index',
+          intersect: false,
+        },
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: {
+              boxWidth: 12,
+              usePointStyle: true,
+              pointStyle: 'circle'
+            }
+          },
+          tooltip: {
+            backgroundColor: 'rgba(17, 24, 39, 0.9)',
+            titleColor: 'rgb(243, 244, 246)',
+            bodyColor: 'rgb(209, 213, 219)',
+            borderColor: 'rgba(107, 114, 128, 0.3)',
+            borderWidth: 1,
+            cornerRadius: 4,
+            displayColors: true,
+            usePointStyle: true,
+          }
+        },
         scales: {
           y: {
             title: {
               display: true,
-              text: 'Angle (degrees)'
+              text: 'Angle (degrees)',
+              color: '#6B7280'
+            },
+            grid: {
+              color: 'rgba(243, 244, 246, 0.8)',
+              borderDash: [3, 3]
+            },
+            ticks: {
+              color: '#6B7280'
             }
           },
           x: {
             title: {
               display: true,
-              text: 'Time (s)'
+              text: 'Time (s)',
+              color: '#6B7280'
+            },
+            grid: {
+              display: false
+            },
+            ticks: {
+              color: '#6B7280'
             }
           }
         }
@@ -305,15 +439,16 @@
         
         const ctx = canvas.value.getContext('2d');
         
-        // Clear canvas
-        ctx.clearRect(0, 0, canvas.value.width, canvas.value.height);
+        // Clear canvas with light background
+        ctx.fillStyle = '#FAFAFA';
+        ctx.fillRect(0, 0, canvas.value.width, canvas.value.height);
         
         // Draw head for active system
-        ctx.fillStyle = '#333';
+        ctx.fillStyle = '#1F2937';
         ctx.fillRect(10, 135, 40, 30);
         
         // Draw active joints and connections
-        ctx.strokeStyle = '#666';
+        ctx.strokeStyle = '#4B5563';
         ctx.lineWidth = 5;
         
         // Starting point (head)
@@ -329,7 +464,7 @@
           ctx.stroke();
           
           // Draw joint
-          ctx.fillStyle = '#f00'; // Red for active joints
+          ctx.fillStyle = '#DC2626'; // Red for active joints
           ctx.beginPath();
           ctx.arc(joint.x, joint.y, 8, 0, Math.PI * 2);
           ctx.fill();
@@ -339,7 +474,7 @@
         });
         
         // Draw head for passive system
-        ctx.fillStyle = '#333';
+        ctx.fillStyle = '#1F2937';
         ctx.fillRect(10, 285, 40, 30);
         
         // Draw passive joints and connections
@@ -354,7 +489,7 @@
           ctx.stroke();
           
           // Draw joint
-          ctx.fillStyle = '#00f'; // Blue for passive joints
+          ctx.fillStyle = '#2563EB'; // Blue for passive joints
           ctx.beginPath();
           ctx.arc(joint.x, joint.y, 8, 0, Math.PI * 2);
           ctx.fill();
@@ -363,11 +498,18 @@
           prevY = joint.y;
         });
         
-        // Add labels
-        ctx.fillStyle = '#000';
-        ctx.font = '16px Arial';
+        // Add labels with more modern styling
+        ctx.fillStyle = '#1F2937';
+        ctx.font = '14px Inter, system-ui, sans-serif';
         ctx.fillText('Active System', 10, 120);
         ctx.fillText('Passive System', 10, 270);
+        
+        // Add time display
+        ctx.fillStyle = '#6B7280';
+        ctx.font = '12px Inter, system-ui, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText(`Time: ${time.value.toFixed(1)}s`, canvas.value.width - 10, 20);
+        ctx.textAlign = 'left';
       };
       
       // Update chart data from tracking data
@@ -424,128 +566,3 @@
     }
   };
   </script>
-  
-  <style scoped>
-  .fish-robotics-container {
-    font-family: Arial, sans-serif;
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 20px;
-    background-color: #f5f5f5;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  }
-  
-  .title {
-    font-size: 24px;
-    font-weight: bold;
-    margin-bottom: 20px;
-    color: #333;
-  }
-  
-  .layout {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-  }
-  
-  @media (min-width: 992px) {
-    .layout {
-      flex-direction: row;
-    }
-    
-    .simulation-panel, .controls-panel {
-      width: 50%;
-    }
-  }
-  
-  h2 {
-    font-size: 18px;
-    font-weight: bold;
-    margin-bottom: 15px;
-    color: #444;
-  }
-  
-  .simulation-panel, .controls-panel, .chart-panel, .notes-panel {
-    padding: 15px;
-    background-color: white;
-    border-radius: 6px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
-    margin-bottom: 20px;
-  }
-  
-  .simulation-canvas {
-    width: 100%;
-    height: auto;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-  }
-  
-  .button-container {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 15px;
-  }
-  
-  .control-button {
-    padding: 8px 16px;
-    border: none;
-    border-radius: 4px;
-    color: white;
-    font-weight: bold;
-    cursor: pointer;
-    transition: background-color 0.2s;
-  }
-  
-  .control-button.pause {
-    background-color: #e53935;
-  }
-  
-  .control-button.pause:hover {
-    background-color: #c62828;
-  }
-  
-  .control-button.resume {
-    background-color: #43a047;
-  }
-  
-  .control-button.resume:hover {
-    background-color: #2e7d32;
-  }
-  
-  .control-button.reset {
-    background-color: #1976d2;
-  }
-  
-  .control-button.reset:hover {
-    background-color: #1565c0;
-  }
-  
-  .slider-control {
-    margin-bottom: 15px;
-  }
-  
-  .slider-control label {
-    display: block;
-    margin-bottom: 5px;
-    font-weight: 500;
-  }
-  
-  .slider-control input {
-    width: 100%;
-  }
-  
-  .chart-container {
-    height: 250px;
-    margin-top: 10px;
-  }
-  
-  .notes-panel ul {
-    padding-left: 20px;
-    line-height: 1.5;
-  }
-  
-  .notes-panel li {
-    margin-bottom: 8px;
-  }
-  </style>
