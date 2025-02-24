@@ -1,6 +1,5 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-import RAPIER from '@dimforge/rapier3d-compat';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 export class FishSimulation {
   private scene: THREE.Scene;
