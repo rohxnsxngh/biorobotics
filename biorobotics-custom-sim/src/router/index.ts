@@ -1,12 +1,12 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import FishTrackingSystem from '../components/Undulation.vue'
+import Undulation from '../components/Undulation.vue'
 import ThreeDSimulation from '../components/3DSimulation.vue'
 
 const routes = [
   {
     path: '/',
     name: 'home',
-    component: FishTrackingSystem
+    component: Undulation
   },
   {
     path: '/3d-simulation',

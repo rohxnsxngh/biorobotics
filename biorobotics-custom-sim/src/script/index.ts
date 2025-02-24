@@ -182,7 +182,7 @@ export class FishSimulation {
         
         // Calculate rotation to align cylinder with direction
         // This is simplified and might need adjustment
-        const axis = new THREE.Vector3(0, 0, 1);
+        // const axis = new THREE.Vector3(0, 0, 1);
         const angle = Math.atan2(direction.y, direction.x);
         segment.rotation.z = angle;
         

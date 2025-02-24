@@ -175,15 +175,15 @@
   </template>
   
   <script>
-  import { ref, reactive, onMounted, onBeforeUnmount, watch } from 'vue';
+  import { ref, reactive, onMounted, onBeforeUnmount, watch, defineComponent } from 'vue';
   import { LineChart } from 'vue-chart-3';
   import { Chart, registerables } from 'chart.js';
   
   // Register Chart.js components
   Chart.register(...registerables);
   
-  export default {
-    name: 'FishTrackingSystem',
+  export default defineComponent({
+    name: 'Undulation',
     components: {
       LineChart
     },
@@ -564,5 +564,5 @@
         resetSimulation
       };
     }
-  };
+  });
   </script>
