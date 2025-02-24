@@ -1,17 +1,33 @@
-<script setup lang="ts"></script>
-
 <template>
-  <div><Undulation /></div>
+  <div id="app">
+    <NavBar />
+    <router-view />
+  </div>
 </template>
 
 <script>
-import { defineComponent } from "vue";
-import Undulation from "./components/Undulation.vue";
+import NavBar from './components/NavBar.vue';
 
-export default defineComponent({
-  name: "App",
+export default {
+  name: 'App',
   components: {
-    Undulation,
-  },
-});
+    NavBar
+  }
+}
 </script>
+
+<style>
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #f8f9fa;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+    Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+}
+
+#app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+</style>
