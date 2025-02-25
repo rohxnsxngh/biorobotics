@@ -100,7 +100,6 @@ export default defineComponent({
   name: "NavBar",
   setup() {
     const mobileMenuOpen = ref(false);
-
     return {
       mobileMenuOpen,
     };
