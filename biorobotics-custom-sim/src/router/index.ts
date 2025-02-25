@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import Undulation from '../components/Undulation.vue'
-import ThreeDSimulation from '../components/3DSimulation.vue'
+import Undulation from '@/components/Undulation.vue'
+import ThreeDSimulation from '@/components/3DSimulation.vue'
 
 const routes = [
   {
