@@ -7,7 +7,12 @@ import topLevelAwait from "vite-plugin-top-level-await";
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [vue(), tailwindcss(), wasm(), topLevelAwait()],
+  resolve: {
+    alias: {
+      "@": "/src",
+    },
+  },
   optimizeDeps: {
-    exclude: ['@dimforge/rapier3d']
-  }
+    exclude: ["@dimforge/rapier3d"],
+  },
 });
