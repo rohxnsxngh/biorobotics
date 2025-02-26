@@ -15,6 +15,11 @@ export class FishSimulation {
   // Lines instead of cylinders
   private fishLines: THREE.Line[] = [];
   
+  // Swimming parameters
+  private frequency: number = 2.0;
+  private amplitude: number = 0.5;
+  private phaseShift: number = 0.5;
+  
   // Configuration options
   private showConnections: boolean = true;
   
@@ -175,12 +180,10 @@ export class FishSimulation {
     // Apply undulating motion to the joints - moving side to side in the Z direction
     this.fishJoints.forEach((joint, index) => {
       // Phase shift increases along the body for wave-like motion
-      const phaseShift = index * 0.5;
-      const amplitude = 0.5; // Maximum displacement
-      const frequency = 2; // Speed of undulation
+      const phaseOffset = this.phaseShift * index;
       
       // Calculate the position change along Z-axis (side to side)
-      const z = amplitude * Math.sin(time * frequency + phaseShift);
+      const z = this.amplitude * Math.sin(this.frequency * time + phaseOffset);
       
       // Keep X and Y constant, only change Z
       joint.position.z = z;
@@ -219,6 +222,31 @@ export class FishSimulation {
     this.fishLines.forEach(line => {
       line.visible = visible;
     });
+  }
+  
+  // Getter and setter methods for swimming parameters
+  public getFrequency(): number {
+    return this.frequency;
+  }
+  
+  public setFrequency(value: number): void {
+    this.frequency = value;
+  }
+  
+  public getAmplitude(): number {
+    return this.amplitude;
+  }
+  
+  public setAmplitude(value: number): void {
+    this.amplitude = value;
+  }
+  
+  public getPhaseShift(): number {
+    return this.phaseShift;
+  }
+  
+  public setPhaseShift(value: number): void {
+    this.phaseShift = value;
   }
 
   public dispose(): void {
