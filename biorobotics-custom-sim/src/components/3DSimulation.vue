@@ -356,6 +356,93 @@
                     </button>
                   </div>
                 </div>
+                <div
+                  class="mt-4 bg-gray-50 p-4 rounded-lg border border-gray-200"
+                  v-if="isStreaming && streamingStats.connected"
+                >
+                  <h3 class="text-sm font-medium text-gray-700 mb-2">
+                    Image Processing Controls
+                  </h3>
+
+                  <div class="grid grid-cols-1 gap-3">
+                    <div>
+                      <div class="flex justify-between mb-1">
+                        <label class="text-xs font-medium text-gray-600"
+                          >Brightness</label
+                        >
+                        <span class="text-xs text-gray-500">{{
+                          imageControls.brightness
+                        }}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        v-model.number="imageControls.brightness"
+                        @change="updateImageControls"
+                        class="w-full h-1 bg-gray-200 rounded appearance-none"
+                      />
+                    </div>
+
+                    <div>
+                      <div class="flex justify-between mb-1">
+                        <label class="text-xs font-medium text-gray-600"
+                          >Contrast</label
+                        >
+                        <span class="text-xs text-gray-500">{{
+                          imageControls.contrast
+                        }}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        v-model.number="imageControls.contrast"
+                        @change="updateImageControls"
+                        class="w-full h-1 bg-gray-200 rounded appearance-none"
+                      />
+                    </div>
+
+                    <div>
+                      <div class="flex justify-between mb-1">
+                        <label class="text-xs font-medium text-gray-600"
+                          >Threshold</label
+                        >
+                        <span class="text-xs text-gray-500">{{
+                          imageControls.threshold
+                        }}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="255"
+                        v-model.number="imageControls.threshold"
+                        @change="updateImageControls"
+                        class="w-full h-1 bg-gray-200 rounded appearance-none"
+                      />
+                    </div>
+
+                    <div class="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="debug-view"
+                        v-model="imageControls.debugView"
+                        @change="updateImageControls"
+                        class="h-3 w-3"
+                      />
+                      <label for="debug-view" class="ml-2 text-xs text-gray-600"
+                        >Show Debug View</label
+                      >
+                    </div>
+
+                    <button
+                      @click="resetImageControls"
+                      class="w-full px-3 py-1.5 text-xs font-medium bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
+                    >
+                      Reset to Defaults
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
             <div class="mt-4">
@@ -778,6 +865,51 @@ export default defineComponent({
       streamingStats.connected = false;
     };
 
+    // Image processing controls
+    const imageControls = reactive({
+      brightness: 30,
+      contrast: 50,
+      threshold: 127,
+      debugView: true,
+    });
+
+    // Function to update image controls on the backend
+    const updateImageControls = async () => {
+      if (!isStreaming.value || !streamingStats.connected) return;
+
+      try {
+        const response = await fetch(
+          `${backendUrl.value}/update-image-controls`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(imageControls),
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(`HTTP error ${response.status}`);
+        }
+
+        // Refresh the processed image to see the changes
+        refreshProcessedImage();
+      } catch (error) {
+        console.error("Error updating image controls:", error);
+      }
+    };
+
+    // Function to reset image controls to defaults
+    const resetImageControls = () => {
+      imageControls.brightness = 30;
+      imageControls.contrast = 50;
+      imageControls.threshold = 127;
+      imageControls.debugView = true;
+
+      updateImageControls();
+    };
+
     // Clean up when component is unmounted
     onBeforeUnmount(() => {
       stopStreaming();
@@ -819,6 +951,9 @@ export default defineComponent({
       processedImage,
       fetchImageInterval,
       refreshProcessedImage,
+      imageControls,
+      updateImageControls,
+      resetImageControls,
     };
   },
 });

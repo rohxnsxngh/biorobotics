@@ -17,6 +17,7 @@ latest_tag_positions = []
 processing_active = False
 processing_fps = 0
 last_process_time = time.time()
+processed_frame = None
 
 @app.route('/process-frame', methods=['POST'])
 def process_frame():
@@ -65,113 +66,146 @@ def process_frame():
 # Add this function to your app.py file
 @app.route('/get-processed-image', methods=['GET'])
 def get_processed_image():
-    global latest_frame
+    global processed_frame
     
-    if latest_frame is None:
-        return jsonify({'error': 'No frame available'}), 404
+    if processed_frame is None:
+        return jsonify({'error': 'No processed frame available'}), 404
     
     try:
-        # Make a copy of the frame
-        frame = latest_frame.copy()
-        
-        # Detect AprilTags and draw them on the frame
-        detected_tags = detect_april_tags(frame)
-        
-        # Draw the detections on the frame
-        for tag in detected_tags:
-            # Draw tag perimeter
-            corners = np.array(tag['corners'], np.int32)
-            corners = corners.reshape((-1, 1, 2))
-            cv2.polylines(frame, [corners], True, (0, 255, 0), 2)
-            
-            # Draw tag center
-            center = tag['center']
-            cv2.circle(frame, center, 5, (0, 0, 255), -1)
-            
-            # Put tag ID
-            cv2.putText(frame, f"ID: {tag['id']}", 
-                       (center[0] + 10, center[1] + 10),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-        
-        # Add debug info to the image
-        cv2.putText(frame, f"FPS: {round(processing_fps, 1)}", (10, 30),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        cv2.putText(frame, f"Tags: {len(detected_tags)}", (10, 60),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        
         # Convert to JPEG
-        _, buffer = cv2.imencode('.jpg', frame)
+        _, buffer = cv2.imencode('.jpg', processed_frame)
         
         # Convert to base64
         img_base64 = base64.b64encode(buffer).decode('utf-8')
         
         return jsonify({
             'image': f'data:image/jpeg;base64,{img_base64}',
-            'num_tags': len(detected_tags)
+            'num_tags': len(latest_tag_positions)
         })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 def detect_april_tags(frame):
     """
-    Process the frame to detect AprilTags with improved detection
-    This is a placeholder for actual AprilTag detection
+    Enhanced AprilTag detection with improved preprocessing
     """
-    # Convert to grayscale for tag detection
+    # Copy the frame for display purposes
+    display_frame = frame.copy()
+    
+    # Convert to grayscale
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     
-    # Apply adaptive thresholding to better handle varying lighting conditions
+    # Apply brightness and contrast adjustment
+    alpha = 1.5  # Contrast control (1.0 means no change)
+    beta = 30    # Brightness control (0 means no change)
+    adjusted = cv2.convertScaleAbs(gray, alpha=alpha, beta=beta)
+    
+    # Apply Gaussian blur to reduce noise
+    blurred = cv2.GaussianBlur(adjusted, (5, 5), 0)
+    
+    # Apply adaptive thresholding
     thresholded = cv2.adaptiveThreshold(
-        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2
+        blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2
     )
     
-    # Basic morphological operations to clean up the image
+    # Apply morphological operations to clean up
     kernel = np.ones((3, 3), np.uint8)
-    thresholded = cv2.morphologyEx(thresholded, cv2.MORPH_OPEN, kernel)
-    thresholded = cv2.morphologyEx(thresholded, cv2.MORPH_CLOSE, kernel)
-    
-    # Draw the thresholded image in a corner for debugging
-    h, w = frame.shape[:2]
-    small_thresh = cv2.resize(thresholded, (w//4, h//4))
-    frame[10:10+h//4, 10:10+w//4] = cv2.cvtColor(small_thresh, cv2.COLOR_GRAY2BGR)
+    opening = cv2.morphologyEx(thresholded, cv2.MORPH_OPEN, kernel)
+    closing = cv2.morphologyEx(opening, cv2.MORPH_CLOSE, kernel)
     
     # Find contours
-    contours, _ = cv2.findContours(thresholded, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(closing, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
-    # Detected tags
+    # Show preprocessing steps in the debug window
+    h, w = frame.shape[:2]
+    debug_size = (w//5, h//5)
+    
+    # Create small versions of each processing step
+    small_gray = cv2.resize(gray, debug_size)
+    small_adjusted = cv2.resize(adjusted, debug_size)
+    small_thresh = cv2.resize(closing, debug_size)
+    
+    # Convert all to BGR for display
+    small_gray_bgr = cv2.cvtColor(small_gray, cv2.COLOR_GRAY2BGR)
+    small_adjusted_bgr = cv2.cvtColor(small_adjusted, cv2.COLOR_GRAY2BGR)
+    small_thresh_bgr = cv2.cvtColor(small_thresh, cv2.COLOR_GRAY2BGR)
+    
+    # Place them in the corners of the display frame
+    display_frame[10:10+debug_size[1], 10:10+debug_size[0]] = small_gray_bgr
+    display_frame[10:10+debug_size[1], 20+debug_size[0]:20+2*debug_size[0]] = small_adjusted_bgr
+    display_frame[10:10+debug_size[1], 30+2*debug_size[0]:30+3*debug_size[0]] = small_thresh_bgr
+    
+    # Add labels for each debug image
+    cv2.putText(display_frame, "Gray", (10, 10+debug_size[1]+10), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
+    cv2.putText(display_frame, "Adjusted", (20+debug_size[0], 10+debug_size[1]+10), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
+    cv2.putText(display_frame, "Threshold", (30+2*debug_size[0], 10+debug_size[1]+10), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
+    
+    # Add special handling for white rectangular regions (potential AprilTags)
     detected_tags = []
+    tag_id = 0
     
-    # Process each contour
-    for i, contour in enumerate(contours):
-        # Filter small contours
-        if cv2.contourArea(contour) < 100:
-            continue
-            
-        # Find the approximate polygon
-        epsilon = 0.02 * cv2.arcLength(contour, True)
-        approx = cv2.approxPolyDP(contour, epsilon, True)
+    for contour in contours:
+        area = cv2.contourArea(contour)
         
-        # If it has 4 corners, it might be a tag
-        if len(approx) == 4:
-            # Get the corners in the right order
-            corners = approx.reshape(-1, 2)
+        # Filter out very small or very large contours
+        if area < 100 or area > 10000:
+            continue
+        
+        # Get the bounding rectangle
+        x, y, w, h = cv2.boundingRect(contour)
+        
+        # Calculate aspect ratio
+        aspect_ratio = float(w) / h
+        
+        # If it's approximately square (aspect ratio between 0.8 and 1.2)
+        if 0.8 <= aspect_ratio <= 1.2:
+            # Draw a green rectangle around it
+            cv2.rectangle(display_frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
             
             # Calculate center
-            center_x = int(np.mean(corners[:, 0]))
-            center_y = int(np.mean(corners[:, 1]))
+            center_x = x + w // 2
+            center_y = y + h // 2
+            
+            # Draw the center
+            cv2.circle(display_frame, (center_x, center_y), 5, (0, 0, 255), -1)
+            
+            # Draw ID
+            cv2.putText(display_frame, f"ID: {tag_id}", (x, y-10), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            
+            # Create corners array
+            corners = [
+                [x, y],
+                [x+w, y],
+                [x+w, y+h],
+                [x, y+h]
+            ]
             
             # Add to detected tags
             detected_tags.append({
-                'id': i,
+                'id': tag_id,
                 'center': (center_x, center_y),
-                'corners': corners.tolist()
+                'corners': corners
             })
+            
+            tag_id += 1
     
-    return detected_tags
+    # Add detection info to frame
+    cv2.putText(display_frame, f"Tags: {len(detected_tags)}", (10, h-20), 
+               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+    
+    # Return the updated frame and detected tags
+    return detected_tags, display_frame
 
 def process_frames():
-    global latest_frame, latest_tag_positions, processing_active
+    global latest_frame, latest_tag_positions, processing_active, processed_frame
     
     processing_active = True
     
@@ -180,32 +214,12 @@ def process_frames():
             # Make a copy of the frame to avoid race conditions
             frame = latest_frame.copy()
             
-            # Detect AprilTags
-            detected_tags = detect_april_tags(frame)
-            
-            # Draw the detections on the frame
-            for tag in detected_tags:
-                # Draw tag perimeter
-                corners = np.array(tag['corners'], np.int32)
-                corners = corners.reshape((-1, 1, 2))
-                cv2.polylines(frame, [corners], True, (0, 255, 0), 2)
-                
-                # Draw tag center
-                center = tag['center']
-                cv2.circle(frame, center, 5, (0, 0, 255), -1)
-                
-                # Put tag ID
-                cv2.putText(frame, f"ID: {tag['id']}", 
-                           (center[0] + 10, center[1] + 10),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-            
-            # Display the processed frame (optional)
-            cv2.imshow('Processed Frame', frame)
-            cv2.waitKey(1)
+            # Detect AprilTags - note we now get back both tags and the processed frame
+            detected_tags, processed_frame = detect_april_tags(frame)
             
             # Update the latest tag positions
             latest_tag_positions = [{'id': tag['id'], 'x': tag['center'][0], 'y': tag['center'][1]} 
-                                    for tag in detected_tags]
+                                   for tag in detected_tags]
         
         # Sleep to avoid consuming too much CPU
         time.sleep(0.01)
