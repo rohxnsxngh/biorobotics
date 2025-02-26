@@ -143,6 +143,25 @@ export class FishSimulation {
     this.animate();
   }
 
+  public captureTagViewAsBase64(): string | null {
+    if (!this.tagRenderer) return null;
+    
+    // Render the scene to make sure it's up to date
+    this.tagRenderer.render(this.tagScene, this.tagCamera);
+    
+    // Get the canvas element from the renderer
+    const canvas = this.tagRenderer.domElement;
+    
+    // Convert the canvas to a base64-encoded image
+    try {
+      // Use toDataURL to get base64 image data (JPEG format with 0.8 quality for smaller size)
+      return canvas.toDataURL('image/jpeg', 0.8);
+    } catch (error) {
+      console.error('Error capturing tag view:', error);
+      return null;
+    }
+  }
+
   private createSimpleFishRobot(): void {
     // Create fish head
     const headGeometry = new THREE.BoxGeometry(1, 1, 1);
