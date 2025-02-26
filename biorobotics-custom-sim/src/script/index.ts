@@ -8,6 +8,12 @@ export class FishSimulation {
   private controls: OrbitControls;
   private clock: THREE.Clock;
   
+  // AprilTag camera view components
+  private tagScene: THREE.Scene;
+  private tagCamera: THREE.OrthographicCamera;
+  private tagRenderer: THREE.WebGLRenderer;
+  private aprilTags: THREE.Sprite[] = [];
+  
   // Fish components
   private fishHead: THREE.Mesh | null = null;
   private fishJoints: THREE.Mesh[] = [];
@@ -24,27 +30,37 @@ export class FishSimulation {
   private showConnections: boolean = true;
   
   private container: HTMLElement;
+  private tagContainer: HTMLElement | null = null;
   private isInitialized: boolean = false;
   private animationFrameId: number | null = null;
 
-  constructor(container: HTMLElement) {
+  constructor(container: HTMLElement, tagContainer: HTMLElement | null = null) {
     this.container = container;
+    this.tagContainer = tagContainer;
+    
+    // Main 3D view
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    
+    // AprilTag camera view
+    this.tagScene = new THREE.Scene();
+    this.tagCamera = new THREE.OrthographicCamera(-5, 5, 5, -5, 0.1, 1000);
+    this.tagRenderer = new THREE.WebGLRenderer({ antialias: true });
+    
     this.clock = new THREE.Clock();
   }
 
   public async initialize(): Promise<void> {
     if (this.isInitialized) return;
     
-    // Set up renderer
+    // Set up main renderer
     this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
     this.renderer.shadowMap.enabled = true;
     this.container.appendChild(this.renderer.domElement);
     
-    // Set up camera
+    // Set up main camera
     this.camera.position.set(10, 5, 10);
     this.camera.lookAt(0, 0, 0);
     
@@ -52,10 +68,10 @@ export class FishSimulation {
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.05;
     
-    // Set up scene
+    // Set up main scene
     this.scene.background = new THREE.Color(0xf0f0f0);
     
-    // Add lighting
+    // Add lighting to main scene
     const ambientLight = new THREE.AmbientLight(0x404040, 2);
     this.scene.add(ambientLight);
     
@@ -66,11 +82,56 @@ export class FishSimulation {
     directionalLight.shadow.mapSize.height = 1024;
     this.scene.add(directionalLight);
     
-    // Add grid
+    // Add grid to main scene
     const gridHelper = new THREE.GridHelper(20, 20);
     this.scene.add(gridHelper);
     
-    // Create fish robot without physics for now
+    // Set up AprilTag camera view if container exists
+    if (this.tagContainer) {
+      // Set up tag renderer
+      this.tagRenderer.setSize(this.tagContainer.clientWidth, this.tagContainer.clientHeight);
+      this.tagContainer.appendChild(this.tagRenderer.domElement);
+      
+      // Set up tag camera (top-down view)
+      this.tagCamera.position.set(0, 10, 0);
+      this.tagCamera.lookAt(0, 0, 0);
+      this.tagCamera.rotation.z = Math.PI; // Flip the camera to match the orientation
+      
+      // Set up tag scene
+      this.tagScene.background = new THREE.Color(0x111111); // Dark background for contrast
+      
+      // Add subtle floor grid to tag scene
+      const gridSize = 20;
+      const gridDivisions = 20;
+      const gridMaterial = new THREE.LineBasicMaterial({ color: 0x333333 });
+      
+      for (let i = -gridSize/2; i <= gridSize/2; i++) {
+        const lineGeometry1 = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(i, 0, -gridSize/2),
+          new THREE.Vector3(i, 0, gridSize/2)
+        ]);
+        const lineGeometry2 = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(-gridSize/2, 0, i),
+          new THREE.Vector3(gridSize/2, 0, i)
+        ]);
+        
+        const line1 = new THREE.Line(lineGeometry1, gridMaterial);
+        const line2 = new THREE.Line(lineGeometry2, gridMaterial);
+        
+        this.tagScene.add(line1);
+        this.tagScene.add(line2);
+      }
+      
+      // Add dim lighting to tag scene
+      const tagAmbientLight = new THREE.AmbientLight(0x555555);
+      this.tagScene.add(tagAmbientLight);
+      
+      const tagDirectionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+      tagDirectionalLight.position.set(0, 10, 0);
+      this.tagScene.add(tagDirectionalLight);
+    }
+    
+    // Create fish robot
     this.createSimpleFishRobot();
     
     // Set up resize listener
@@ -92,6 +153,16 @@ export class FishSimulation {
     this.fishHead.position.set(0, 0.5, 0); // Lifted slightly so it sits on the grid
     this.scene.add(this.fishHead);
     
+    // Create a copy for the tag scene
+    if (this.tagContainer) {
+      const tagHead = new THREE.Mesh(headGeometry, headMaterial);
+      tagHead.position.copy(this.fishHead.position);
+      this.tagScene.add(tagHead);
+      
+      // Add AprilTag to the head (just a visual representation)
+      this.createAprilTag(0, this.fishHead.position);
+    }
+    
     // Create fish joints and lines
     const numJoints = 5;
     const jointRadius = 0.2;
@@ -99,6 +170,7 @@ export class FishSimulation {
     // Initialize arrays
     this.fishJoints = [];
     this.fishLines = [];
+    this.aprilTags = [];
     
     // Position of back of the head
     let prevJointPosition = new THREE.Vector3(0.5, 0.5, 0);
@@ -106,7 +178,7 @@ export class FishSimulation {
     // Create a line material
     const lineMaterial = new THREE.LineBasicMaterial({ 
       color: 0x000000, 
-      linewidth: 2 // Note: linewidth may not work in all browsers due to WebGL limitations
+      linewidth: 2
     });
     
     // First line will connect head to first joint
@@ -130,6 +202,16 @@ export class FishSimulation {
       this.scene.add(joint);
       this.fishJoints.push(joint);
       
+      // Create a copy for the tag scene
+      if (this.tagContainer) {
+        const tagJoint = new THREE.Mesh(jointGeometry, jointMaterial);
+        tagJoint.position.copy(jointPosition);
+        this.tagScene.add(tagJoint);
+        
+        // Add AprilTag to this joint
+        this.createAprilTag(i + 1, jointPosition);
+      }
+      
       // Create a line to connect from previous position to this joint
       const points = [];
       
@@ -149,8 +231,59 @@ export class FishSimulation {
       this.scene.add(line);
       this.fishLines.push(line);
       
+      // Create a copy for the tag scene
+      if (this.tagContainer) {
+        const tagLineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+        const tagLine = new THREE.Line(tagLineGeometry, lineMaterial);
+        tagLine.visible = this.showConnections;
+        this.tagScene.add(tagLine);
+      }
+      
       prevJointPosition = jointPosition.clone();
     }
+  }
+  
+  private createAprilTag(id: number, position: THREE.Vector3): void {
+    // Create a canvas for the AprilTag
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    
+    if (!ctx) return;
+    
+    // Draw AprilTag pattern (simplified representation)
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, 64, 64);
+    
+    ctx.fillStyle = 'black';
+    ctx.fillRect(8, 8, 48, 48);
+    
+    ctx.fillStyle = 'white';
+    ctx.fillRect(16, 16, 32, 32);
+    
+    // Draw ID number in the center
+    ctx.fillStyle = 'black';
+    ctx.font = 'bold 24px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(id.toString(), 32, 32);
+    
+    // Create a texture from the canvas
+    const texture = new THREE.CanvasTexture(canvas);
+    
+    // Create a sprite material with the texture
+    const material = new THREE.SpriteMaterial({ map: texture });
+    
+    // Create a sprite with the material
+    const sprite = new THREE.Sprite(material);
+    sprite.position.copy(position);
+    sprite.position.y += 0.25; // Position slightly above the joint
+    sprite.scale.set(0.5, 0.5, 1);
+    
+    // Add the sprite to the tag scene
+    this.tagScene.add(sprite);
+    this.aprilTags.push(sprite);
   }
 
   private handleResize = (): void => {
@@ -159,9 +292,24 @@ export class FishSimulation {
     const width = this.container.clientWidth;
     const height = this.container.clientHeight;
     
+    // Update main view
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
+    
+    // Update tag view if available
+    if (this.tagContainer) {
+      const tagWidth = this.tagContainer.clientWidth;
+      const tagHeight = this.tagContainer.clientHeight;
+      
+      this.tagCamera.left = -tagWidth / tagHeight * 5;
+      this.tagCamera.right = tagWidth / tagHeight * 5;
+      this.tagCamera.top = 5;
+      this.tagCamera.bottom = -5;
+      this.tagCamera.updateProjectionMatrix();
+      
+      this.tagRenderer.setSize(tagWidth, tagHeight);
+    }
   }
 
   private animate = (): void => {
@@ -169,11 +317,18 @@ export class FishSimulation {
     
     const time = this.clock.getElapsedTime();
     
-    // Simulate fish swimming motion without physics
+    // Simulate fish swimming motion
     this.simulateSwimmingMotion(time);
     
+    // Update main view
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
+    
+    // Update tag view if available
+    if (this.tagContainer) {
+      this.updateTagView();
+      this.tagRenderer.render(this.tagScene, this.tagCamera);
+    }
   }
   
   private simulateSwimmingMotion(time: number): void {
@@ -213,15 +368,80 @@ export class FishSimulation {
       line.geometry = new THREE.BufferGeometry().setFromPoints(points);
     });
   }
+  
+  private updateTagView(): void {
+    // Update AprilTag positions to match the fish joints
+    this.aprilTags.forEach((tag, index) => {
+      if (index === 0) {
+        // Head tag
+        tag.position.x = this.fishHead!.position.x;
+        tag.position.z = this.fishHead!.position.z;
+        tag.position.y = this.fishHead!.position.y + 0.25;
+      } else {
+        // Joint tags
+        const joint = this.fishJoints[index - 1];
+        tag.position.x = joint.position.x;
+        tag.position.z = joint.position.z;
+        tag.position.y = joint.position.y + 0.25;
+      }
+    });
+    
+    // Update tag scene lines to match the main scene
+    let lineIndex = 0;
+    
+    // Find the line objects in tag scene and update them
+    this.tagScene.traverse((object) => {
+      if (object instanceof THREE.Line && !(object instanceof THREE.LineSegments) && lineIndex < this.fishLines.length) {
+        const mainLine = this.fishLines[lineIndex];
+        
+        if (mainLine.geometry instanceof THREE.BufferGeometry) {
+          // Get the positions from the main line
+          const positions = mainLine.geometry.getAttribute('position').array;
+          const points = [];
+          
+          for (let i = 0; i < positions.length; i += 3) {
+            points.push(new THREE.Vector3(positions[i], positions[i+1], positions[i+2]));
+          }
+          
+          // Update tag line geometry
+          object.geometry.dispose();
+          object.geometry = new THREE.BufferGeometry().setFromPoints(points);
+          object.visible = this.showConnections;
+          
+          lineIndex++;
+        }
+      }
+    });
+    
+    // Add a simulated camera noise effect to make it look more realistic
+    this.aprilTags.forEach(tag => {
+      if (Math.random() > 0.95) {
+        // Occasionally make a tag flicker
+        tag.visible = Math.random() > 0.5;
+        setTimeout(() => {
+          tag.visible = true;
+        }, 100);
+      }
+    });
+  }
 
   // Public method to toggle line visibility
   public toggleConnections(visible: boolean): void {
     this.showConnections = visible;
     
-    // Update visibility of all lines
+    // Update visibility of all lines in main scene
     this.fishLines.forEach(line => {
       line.visible = visible;
     });
+    
+    // Update visibility in tag scene
+    if (this.tagContainer) {
+      this.tagScene.traverse((object) => {
+        if (object instanceof THREE.Line && !(object instanceof THREE.LineSegments)) {
+          object.visible = visible;
+        }
+      });
+    }
   }
   
   // Getter and setter methods for swimming parameters
@@ -264,14 +484,19 @@ export class FishSimulation {
       line.geometry.dispose();
     });
     
-    // Remove renderer from DOM
+    // Remove renderers from DOM
     if (this.renderer.domElement.parentNode) {
       this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
+    }
+    
+    if (this.tagRenderer.domElement.parentNode) {
+      this.tagRenderer.domElement.parentNode.removeChild(this.tagRenderer.domElement);
     }
     
     // Clear references
     this.fishJoints = [];
     this.fishLines = [];
+    this.aprilTags = [];
     this.fishHead = null;
     
     this.isInitialized = false;

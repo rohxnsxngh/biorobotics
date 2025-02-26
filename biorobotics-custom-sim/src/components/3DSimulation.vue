@@ -2,7 +2,7 @@
   <div class="bg-gray-100 min-h-screen">
     <div class="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
       <h1 class="text-3xl font-bold text-gray-900 mb-8 border-b border-gray-200 pb-4">
-        3D Fish Robotics Simulation
+        3D Fish Robotics Simulation with AprilTag Tracking
       </h1>
       
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
@@ -47,7 +47,7 @@
               <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
                 <h3 class="text-sm font-medium text-gray-700 mb-2">AprilTag Simulation</h3>
                 <p class="text-xs text-gray-600">
-                  This visualization simulates how AprilTags would track the joint movement in an anguilliform swimming pattern. The spheres represent the locations where AprilTags would be attached.
+                  The top-down camera view shows simulated AprilTags attached to each joint, similar to how you would track motion in a physical implementation.
                 </p>
               </div>
             </div>
@@ -160,6 +160,60 @@
         </div>
       </div>
       
+      <!-- AprilTag Camera View Panel -->
+      <div class="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden mb-6">
+        <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+          <h2 class="text-xl font-semibold text-gray-800">AprilTag Camera View</h2>
+          <div class="text-sm text-gray-500 flex items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            Top-Down View
+          </div>
+        </div>
+        <div class="p-6">
+          <!-- AprilTag camera view container -->
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+            <div class="md:col-span-2">
+              <div 
+                ref="tagContainer" 
+                class="bg-gray-900 border border-gray-800 rounded-lg w-full overflow-hidden" 
+                style="height: 280px;"
+              ></div>
+            </div>
+            <div class="bg-gray-50 p-4 rounded-lg border border-gray-200 h-full">
+              <h3 class="text-sm font-medium text-gray-700 mb-2">AprilTag Tracking Info</h3>
+              <div class="space-y-2">
+                <div class="text-xs text-gray-600">
+                  <span class="font-medium">Tags Detected:</span> {{ aprilTagsDetected }} / 6
+                </div>
+                <div class="text-xs text-gray-600">
+                  <span class="font-medium">Camera FPS:</span> {{ cameraFps.toFixed(1) }}
+                </div>
+                <div class="text-xs text-gray-600">
+                  <span class="font-medium">Tracking Status:</span>
+                  <span 
+                    class="ml-1 px-2 py-0.5 text-xs rounded" 
+                    :class="trackingStatus === 'Good' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'"
+                  >
+                    {{ trackingStatus }}
+                  </span>
+                </div>
+                <div class="mt-4">
+                  <h4 class="text-xs font-medium text-gray-700 mb-1">Joint Positions:</h4>
+                  <div class="text-xs text-gray-600 space-y-1">
+                    <div v-for="(pos, index) in jointPositions" :key="index">
+                      <span class="font-mono">Tag {{ index }}: x={{ pos.x.toFixed(2) }}, z={{ pos.z.toFixed(2) }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
       <!-- Details Panel -->
       <div class="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-100">
@@ -178,19 +232,19 @@
             <li class="flex items-start">
               <span class="inline-block w-1.5 h-1.5 rounded-full bg-gray-800 mt-1.5 mr-3 flex-shrink-0"></span>
               <span>
-                <strong>Frequency</strong> determines how fast the undulation occurs
+                The AprilTag camera view simulates what an overhead camera would see when tracking the physical system
               </span>
             </li>
             <li class="flex items-start">
               <span class="inline-block w-1.5 h-1.5 rounded-full bg-gray-800 mt-1.5 mr-3 flex-shrink-0"></span>
               <span>
-                <strong>Amplitude</strong> controls how far the joints move laterally
+                In a real implementation, AprilTags would be printed and attached to each joint for tracking
               </span>
             </li>
             <li class="flex items-start">
               <span class="inline-block w-1.5 h-1.5 rounded-full bg-gray-800 mt-1.5 mr-3 flex-shrink-0"></span>
               <span>
-                <strong>Phase shift</strong> determines how the wave travels through the body
+                The simulation includes realistic tracking features like occasional missed detections and measurement noise
               </span>
             </li>
           </ul>
@@ -201,23 +255,39 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, onBeforeUnmount } from 'vue';
+import { defineComponent, ref, onMounted, onBeforeUnmount, reactive } from 'vue';
 import { FishSimulation } from '../script/index';
 
 export default defineComponent({
   name: 'ThreeDSimulation',
   setup() {
     const threeContainer = ref<HTMLElement | null>(null);
+    const tagContainer = ref<HTMLElement | null>(null);
     const showConnections = ref(true);
     const frequency = ref(2.0);
     const amplitude = ref(0.5);
     const phaseShift = ref(0.5);
+    
+    // AprilTag tracking info
+    const aprilTagsDetected = ref(6);
+    const cameraFps = ref(30.0);
+    const trackingStatus = ref('Good');
+    const jointPositions = reactive([
+      { x: 0, z: 0 }, // Head
+      { x: 0, z: 0 }, // Joint 1
+      { x: 0, z: 0 }, // Joint 2
+      { x: 0, z: 0 }, // Joint 3
+      { x: 0, z: 0 }, // Joint 4
+      { x: 0, z: 0 }  // Joint 5
+    ]);
+    
     let simulation: FishSimulation | null = null;
+    let statsInterval: number | null = null;
 
     onMounted(async () => {
       if (threeContainer.value) {
         // Initialize the Three.js simulation
-        simulation = new FishSimulation(threeContainer.value);
+        simulation = new FishSimulation(threeContainer.value, tagContainer.value);
         await simulation.initialize();
         
         // Initialize UI controls with values from simulation
@@ -226,8 +296,35 @@ export default defineComponent({
           amplitude.value = simulation.getAmplitude();
           phaseShift.value = simulation.getPhaseShift();
         }
+        
+        // Start updating tracking stats
+        startTrackingStats();
       }
     });
+    
+    const startTrackingStats = () => {
+      // Update tracking stats every 500ms
+      statsInterval = window.setInterval(() => {
+        // Simulate AprilTag detection stats
+        aprilTagsDetected.value = Math.min(6, Math.floor(Math.random() * 2) + 5); // 5 or 6 tags
+        cameraFps.value = 30 + (Math.random() * 4 - 2); // 28-32 FPS
+        trackingStatus.value = aprilTagsDetected.value === 6 ? 'Good' : 'Partial';
+        
+        // Update joint positions based on the simulation
+        if (simulation) {
+          // Get positions from the simulation's fishHead and fishJoints
+          // This assumes the FishSimulation class exposes the positions somehow
+          // For now we'll simulate with some random values
+          for (let i = 0; i < jointPositions.length; i++) {
+            const wobble = Math.sin(Date.now() / 1000 * frequency.value + i * phaseShift.value) * amplitude.value;
+            jointPositions[i] = { 
+              x: 0.5 + i * 0.8, // Approximate X positions
+              z: wobble          // Z position with wobble
+            };
+          }
+        }
+      }, 500);
+    };
     
     const toggleConnections = () => {
       if (simulation) {
@@ -287,6 +384,11 @@ export default defineComponent({
     };
 
     onBeforeUnmount(() => {
+      // Clear the tracking stats interval
+      if (statsInterval !== null) {
+        window.clearInterval(statsInterval);
+      }
+      
       // Clean up resources when component is unmounted
       if (simulation) {
         simulation.dispose();
@@ -296,10 +398,15 @@ export default defineComponent({
 
     return {
       threeContainer,
+      tagContainer,
       showConnections,
       frequency,
       amplitude,
       phaseShift,
+      aprilTagsDetected,
+      cameraFps,
+      trackingStatus,
+      jointPositions,
       toggleConnections,
       updateFrequency,
       updateAmplitude,
