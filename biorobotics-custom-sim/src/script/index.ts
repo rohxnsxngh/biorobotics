@@ -112,7 +112,7 @@ export class FishSimulation {
 
       // Add subtle floor grid to tag scene
       const gridSize = 20;
-      const gridDivisions = 20;
+      // const gridDivisions = 20;
       const gridMaterial = new THREE.LineBasicMaterial({ color: 0x333333 });
 
       for (let i = -gridSize / 2; i <= gridSize / 2; i++) {
