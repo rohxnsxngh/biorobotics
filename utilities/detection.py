@@ -13,7 +13,7 @@ detector = Detector(families='tag25h9',
                     debug=0)
 
 # Replace with your phone's IP address and port
-url = 'http://172.26.65.246:4747/video'
+url = 'http://172.20.10.1:4747/video'
 cap = cv2.VideoCapture(url)
 
 # Placeholder camera parameters - these don't affect detection, only pose estimation

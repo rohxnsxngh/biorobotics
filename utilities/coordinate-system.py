@@ -12,7 +12,7 @@ detector = Detector(families='tag36h11',
                     debug=0)
 
 # Replace with your phone's IP address and port
-url = 'http://172.26.67.232:4747/video'
+url = 'http://172.26.46.85:4747/video'
 cap = cv2.VideoCapture(url)
 
 # Camera parameters
@@ -25,8 +25,9 @@ tag_size = 0.05  # 5cm - adjust to your actual tag size
 # This creates a chain: 0→1→2→3
 sequential_pairs = [(0, 1), (1, 2), (2, 3)]
 
-# Add 0→3 if you want to complete the loop/rectangle
-# sequential_pairs.append((0, 3))
+# Add coordinate system reference line
+# Define the new base coordinate system between tag 0 and tag 5
+coordinate_system_pair = (0, 5)
 
 while True:
     ret, frame = cap.read()
@@ -39,19 +40,19 @@ while True:
     # Detect AprilTags
     results = detector.detect(gray, estimate_tag_pose=True, camera_params=camera_params, tag_size=tag_size)
     
-    # Filter for tags with IDs 0-3 and organize by ID
+    # Filter for our tags and organize by ID
     target_tags = {}
     for r in results:
-        if r.tag_id in [0, 1, 2, 3]:
+        if r.tag_id in [0, 1, 2, 3, 4, 5]:
             target_tags[r.tag_id] = r
     
     # Display how many of our target tags were found
-    cv2.putText(frame, f"Target tags found: {len(target_tags)}/{4}", 
+    cv2.putText(frame, f"Target tags found: {len(target_tags)}/{6}", 
                 (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 
                 0.7, (0, 255, 255), 2)
     
     # Draw detection results
-    tag_colors = [(0, 0, 255), (0, 255, 0), (255, 0, 0), (255, 255, 0)]  # Colors for tags 0,1,2,3
+    tag_colors = [(0, 0, 255), (0, 255, 0), (255, 0, 0), (255, 255, 0), (255, 0, 255), (0, 255, 255)]  # Colors for tags 0,1,2,3,4,5
     for tag_id, r in target_tags.items():
         # Extract tag corners and center
         pts = r.corners.astype(np.int32).reshape((-1, 1, 2))
@@ -70,7 +71,46 @@ while True:
         # Draw center point
         cv2.circle(frame, (center[0], center[1]), 3, color, -1)
     
-    # Calculate distances ONLY between the sequential pairs
+    # Establish new coordinate system if tags 0 and 5 are visible
+    new_coordinate_system = False
+    if 0 in target_tags and 5 in target_tags:
+        tag0 = target_tags[0]
+        tag5 = target_tags[5]
+        
+        # Get centers
+        center0 = np.mean(tag0.corners, axis=0).astype(int)
+        center5 = np.mean(tag5.corners, axis=0).astype(int)
+        
+        # Draw thicker line to represent the X-axis of new coordinate system
+        cv2.line(frame, tuple(center0), tuple(center5), (0, 0, 0), 3)  # Thick black line
+        cv2.line(frame, tuple(center0), tuple(center5), (255, 255, 255), 1)  # White overlay
+        
+        # Calculate 3D distance if pose information is available
+        if hasattr(tag0, 'pose_t') and hasattr(tag5, 'pose_t') and tag0.pose_t is not None and tag5.pose_t is not None:
+            # Extract 3D positions
+            pos0 = tag0.pose_t.reshape(3)
+            pos5 = tag5.pose_t.reshape(3)
+            
+            # Calculate 3D Euclidean distance - this is our X-axis length
+            x_axis_length = np.linalg.norm(pos5 - pos0)
+            
+            # Calculate unit vector from tag0 to tag5 (X-axis direction)
+            x_axis_dir = (pos5 - pos0) / x_axis_length
+            
+            # Create a Y-axis direction perpendicular to X-axis and camera Z
+            z_axis = np.array([0, 0, 1])
+            y_axis_dir = np.cross(z_axis, x_axis_dir)
+            y_axis_dir = y_axis_dir / np.linalg.norm(y_axis_dir)
+            
+            # Display coordinate system information
+            cv2.putText(frame, f"X-axis length: {x_axis_length:.3f}m", 
+                        (int((center0[0] + center5[0]) / 2), int((center0[1] + center5[1]) / 2) - 15), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 
+                        0.6, (255, 255, 255), 2)
+            
+            new_coordinate_system = True
+    
+    # Calculate distances between the sequential pairs
     distances = []
     for id1, id2 in sequential_pairs:
         if id1 in target_tags and id2 in target_tags:
@@ -163,8 +203,41 @@ while True:
                         cv2.FONT_HERSHEY_SIMPLEX, 
                         0.6, color, 2)
     
+    # Calculate and display positions in new coordinate system if established
+    if new_coordinate_system:
+        # Reference positions
+        tag0_pos = target_tags[0].pose_t.reshape(3)
+        tag5_pos = target_tags[5].pose_t.reshape(3)
+        
+        # Create X-axis direction vector (unit vector)
+        x_axis = (tag5_pos - tag0_pos) / np.linalg.norm(tag5_pos - tag0_pos)
+        
+        # Y-axis is perpendicular to X-axis and camera Z-axis
+        z_axis = np.array([0, 0, 1])
+        y_axis = np.cross(z_axis, x_axis)
+        y_axis = y_axis / np.linalg.norm(y_axis)
+        
+        # Display new coordinates for tags 1-4
+        for tag_id in range(1, 5):
+            if tag_id in target_tags:
+                tag_pos = target_tags[tag_id].pose_t.reshape(3)
+                
+                # Vector from origin (tag 0) to current tag
+                rel_pos = tag_pos - tag0_pos
+                
+                # Project onto our new coordinate system
+                x_coord = np.dot(rel_pos, x_axis)
+                y_coord = np.dot(rel_pos, y_axis)
+                
+                # Display the coordinates in our new system
+                center = np.mean(target_tags[tag_id].corners, axis=0).astype(int)
+                cv2.putText(frame, f"({x_coord:.3f}, {y_coord:.3f})m", 
+                            (center[0] + 15, center[1] + 15), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 
+                            0.5, (255, 255, 255), 2)
+    
     # Display the frame
-    cv2.imshow('AprilTag Sequential Analysis', frame)
+    cv2.imshow('AprilTag with Custom Coordinate System', frame)
     
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
