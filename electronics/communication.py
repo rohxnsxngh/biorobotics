@@ -76,7 +76,7 @@ cx, cy = 320, 240
 camera_params = [fx, fy, cx, cy]
 tag_size = 0.05  # 5cm - adjust to your actual tag size
 
-# Define the coordinate system reference - MODIFIED: Now using tags 0 and 2
+# Define the coordinate system reference - using tags 0 and 2
 coordinate_system_pair = (0, 2)
 
 # Shared data between threads
@@ -91,6 +91,37 @@ shared_data = {
     'send_interval': 0.5,  # Send data every 0.5 seconds
     'last_send_time': 0
 }
+
+# Function to calculate heading from tag corners
+def calculate_heading_from_corners(corners, coord_system):
+    """Calculate heading based on the tag's corner orientation."""
+    # AprilTag corners are ordered: top-left, top-right, bottom-right, bottom-left
+    # We'll use the vector from center to front (top edge midpoint) to determine heading
+    
+    # Calculate center point
+    center = np.mean(corners, axis=0)
+    
+    # Calculate the midpoint of the top edge (front of the tag)
+    front_midpoint = (corners[0] + corners[1]) / 2
+    
+    # Vector from center to front in camera coordinates
+    heading_vector = front_midpoint - center
+    
+    # Normalize the vector
+    heading_vector = heading_vector / np.linalg.norm(heading_vector)
+    
+    # Project this vector onto our coordinate system
+    # Add a z-coordinate of 0 for 3D projection
+    heading_vector_3d = np.array([heading_vector[0], heading_vector[1], 0])
+    
+    # Project onto custom coordinate system
+    heading_x = np.dot(heading_vector_3d, coord_system['x_axis'])
+    heading_y = np.dot(heading_vector_3d, coord_system['y_axis'])
+    
+    # Calculate the heading angle in our coordinate system
+    theta = np.arctan2(heading_y, heading_x)
+    
+    return theta, heading_vector
 
 # Function to run the simple status window
 def run_status_window():
@@ -140,8 +171,8 @@ def run_status_window():
         # Update position info
         robot_pos = shared_data.get('robot_pos')
         if robot_pos:
-            position_label.config(text=f"Robot Position: X={robot_pos[0]:.3f}, Y={robot_pos[1]:.3f}, "
-                                      f"Theta={np.rad2deg(shared_data.get('robot_theta', 0)):.1f}°")
+            theta_deg = np.rad2deg(shared_data.get('robot_theta', 0))
+            position_label.config(text=f"Robot Position: X={robot_pos[0]:.3f}, Y={robot_pos[1]:.3f}, Heading={theta_deg:.1f}°")
         
         # Update connection status
         if shared_data.get('arduino_connected', False):
@@ -187,33 +218,26 @@ def arduino_communication_thread():
             if (current_time - last_time > shared_data['send_interval'] and 
                 shared_data.get('robot_pos') is not None):
                 
-                # Format data to send
+                # Format data to send - X, Y coordinates and heading
                 x, y = shared_data['robot_pos']
                 theta = shared_data['robot_theta']
-                
-                # Convert to degrees for easier Arduino handling
                 theta_deg = np.rad2deg(theta)
                 
                 # Calculate distance to target (using the x-axis length as our target)
-                distance_to_target = shared_data.get('x_axis_length', 0) - x
+                x_axis_length = shared_data.get('x_axis_length', 0)
+                distance_to_target = x_axis_length - x if x_axis_length > 0 else 0
                 
-                # Calculate angle to target (assuming target is at x-axis)
-                angle_to_target = np.arctan2(-y, distance_to_target)
-                rel_angle = np.arctan2(np.sin(angle_to_target - theta), np.cos(angle_to_target - theta))
-                rel_angle_deg = np.rad2deg(rel_angle)
-                
-                # Enhanced data packet with more navigation-related information
+                # Data packet with position and heading
                 data = {
                     'x': round(x, 3),
                     'y': round(y, 3),
-                    'theta': round(theta_deg, 2),
-                    'distance': round(distance_to_target, 3),
-                    'rel_angle': round(rel_angle_deg, 2)
+                    'theta': round(theta_deg, 1),
+                    'distance': round(distance_to_target, 3)
                 }
                 
                 # Send to Arduino
                 if send_to_arduino(data):
-                    shared_data['last_sent_data'] = f"X: {data['x']}, Y: {data['y']}, Theta: {data['theta']}°, Dist: {data['distance']}m, Angle: {data['rel_angle']}°"
+                    shared_data['last_sent_data'] = f"X: {data['x']}, Y: {data['y']}, Theta: {data['theta']}°, Dist: {data['distance']}m"
                     last_time = current_time
                     print(f"Sent to Arduino: {shared_data['last_sent_data']}")  # Print to console
         
@@ -230,13 +254,6 @@ arduino_thread = Thread(target=arduino_communication_thread)
 arduino_thread.daemon = True
 arduino_thread.start()
 
-# Track last position to detect movement
-last_robot_pos = None
-position_change_threshold = 0.1  # meters
-
-# Variable to track the last measured x-axis length
-last_x_axis_length = 0
-
 # Main loop for AprilTag detection
 try:
     while True:
@@ -250,10 +267,10 @@ try:
         # Detect AprilTags
         results = detector.detect(gray, estimate_tag_pose=True, camera_params=camera_params, tag_size=tag_size)
         
-        # MODIFIED: Now filtering for tags 0, 1, and 2
+        # Filter for tags 0, 1, and 2
         target_tags = {}
         for r in results:
-            if r.tag_id in [0, 1, 2]:  # We only need tags 0, 1, and 2 now
+            if r.tag_id in [0, 1, 2]:  # Only need tags 0, 1, and 2
                 target_tags[r.tag_id] = r
         
         # Display how many of our target tags were found
@@ -268,18 +285,17 @@ try:
                     (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 
                     0.7, arduino_color, 2)
         
-        # MODIFIED: Updated colors for tags 0, 1, 2
-        tag_colors = [(0, 0, 255), (0, 255, 0), (255, 0, 255)]  # Colors for tags 0, 1, 2
+        # Colors for tags 0, 1, 2
+        tag_colors = [(0, 0, 255), (0, 255, 0), (255, 0, 255)]  # Red, Green, Magenta
+        
+        # Draw detected tags
         for tag_id, r in target_tags.items():
-            # Get the index for the color
-            color_idx = tag_id  # Direct mapping since we're using tags 0, 1, 2
-            
             # Extract tag corners and center
             pts = r.corners.astype(np.int32).reshape((-1, 1, 2))
             center = np.mean(pts, axis=0).astype(int)[0]
             
             # Draw tag outline with specific color based on ID
-            color = tag_colors[color_idx]
+            color = tag_colors[tag_id]
             cv2.polylines(frame, [pts], True, color, 2)
             
             # Draw tag ID
@@ -290,8 +306,15 @@ try:
             
             # Draw center point
             cv2.circle(frame, (center[0], center[1]), 3, color, -1)
+            
+            # Number the corners (for debugging)
+            for i, corner in enumerate(r.corners.astype(np.int32)):
+                cv2.putText(frame, str(i), 
+                           (corner[0], corner[1]), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 
+                           0.4, (255, 255, 0), 1)
         
-        # MODIFIED: Check if we have our coordinate system reference tags (0 and 2)
+        # Check if we have our coordinate system reference tags (0 and 2)
         new_coordinate_system = False
         if 0 in target_tags and 2 in target_tags:
             tag0 = target_tags[0]
@@ -301,7 +324,7 @@ try:
             center0 = np.mean(tag0.corners, axis=0).astype(int)
             center2 = np.mean(tag2.corners, axis=0).astype(int)
             
-            # Draw thicker line to represent the X-axis of new coordinate system
+            # Draw line to represent the X-axis of coordinate system
             cv2.line(frame, tuple(center0), tuple(center2), (0, 0, 0), 3)  # Thick black line
             cv2.line(frame, tuple(center0), tuple(center2), (255, 255, 255), 1)  # White overlay
             
@@ -314,10 +337,7 @@ try:
                 # Calculate 3D Euclidean distance - this is our X-axis length
                 x_axis_length = np.linalg.norm(pos2 - pos0)
                 
-                # Check if the axis length has changed significantly
-                if abs(x_axis_length - last_x_axis_length) > 0.05:  # 5cm threshold
-                    last_x_axis_length = x_axis_length
-                
+                # Update shared data
                 shared_data['x_axis_length'] = x_axis_length
                 
                 # Calculate unit vector from tag0 to tag2 (X-axis direction)
@@ -344,11 +364,7 @@ try:
                     'z_axis': np.cross(x_axis_dir, y_axis_dir)
                 }
         
-        # Initialize robot position 
-        robot_pos = None
-        robot_theta = 0
-        
-        # MODIFIED: Calculate positions in new coordinate system if established and tag 1 is visible
+        # Calculate robot position and heading if coordinate system established and tag 1 is visible
         if new_coordinate_system and 1 in target_tags:
             tag1 = target_tags[1]
             tag_pos = tag1.pose_t.reshape(3)
@@ -363,34 +379,32 @@ try:
             # Get center of tag in image
             center = np.mean(tag1.corners, axis=0).astype(int)
             
-            # Display the coordinates in our new system
-            cv2.putText(frame, f"Robot: ({x_coord:.2f}, {y_coord:.2f})m", 
+            # Calculate heading using corners method
+            theta, heading_vector = calculate_heading_from_corners(tag1.corners, coord_system)
+            theta_deg = np.rad2deg(theta)
+            
+            # Draw heading vector (direction the tag is facing)
+            # Convert heading vector to pixels for visualization
+            scale_factor = 50
+            head_x = center[0] + int(heading_vector[0] * scale_factor)
+            head_y = center[1] + int(heading_vector[1] * scale_factor)
+            cv2.arrowedLine(frame, tuple(center), (head_x, head_y), (0, 255, 0), 2)
+            
+            # Draw the top edge (front) of the tag
+            front_midpoint = ((tag1.corners[0][0] + tag1.corners[1][0])/2, 
+                              (tag1.corners[0][1] + tag1.corners[1][1])/2)
+            front_midpoint = (int(front_midpoint[0]), int(front_midpoint[1]))
+            cv2.circle(frame, front_midpoint, 5, (255, 255, 0), -1)
+            
+            # Display the coordinates and heading in our new system
+            cv2.putText(frame, f"Robot: ({x_coord:.2f}, {y_coord:.2f})m, {theta_deg:.1f}°", 
                         (center[0] + 15, center[1] + 15), 
                         cv2.FONT_HERSHEY_SIMPLEX, 
                         0.5, (255, 255, 255), 2)
             
-            # Store robot position
-            robot_pos = (x_coord, y_coord)
-            
-            # Calculate robot orientation (theta)
-            rot_matrix = cv2.Rodrigues(tag1.pose_R)[0]
-            yaw = np.arctan2(rot_matrix[1, 0], rot_matrix[0, 0])
-            
-            # Transform to our coordinate system
-            robot_heading_vec = np.array([np.cos(yaw), np.sin(yaw), 0])
-            robot_heading_x = np.dot(robot_heading_vec, coord_system['x_axis'])
-            robot_heading_y = np.dot(robot_heading_vec, coord_system['y_axis'])
-            robot_theta = np.arctan2(robot_heading_y, robot_heading_x)
-            
-            # Draw robot heading vector
-            heading_length = 0.5  # in meters
-            head_x = center[0] + int(heading_length * 100 * np.cos(robot_theta))
-            head_y = center[1] + int(heading_length * 100 * np.sin(robot_theta))
-            cv2.arrowedLine(frame, tuple(center), (head_x, head_y), (0, 255, 0), 2)
-            
-            # Update shared data
-            shared_data['robot_pos'] = robot_pos
-            shared_data['robot_theta'] = robot_theta
+            # Store robot position and heading
+            shared_data['robot_pos'] = (x_coord, y_coord)
+            shared_data['robot_theta'] = theta
             
             # Display latest Arduino response if available
             arduino_response = shared_data.get('arduino_response')

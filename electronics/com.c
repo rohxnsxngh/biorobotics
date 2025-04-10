@@ -1,14 +1,13 @@
-// Arduino sketch to receive location and orientation data from Python
-// and echo it back as confirmation
+// Arduino sketch to receive position and heading data from Python
+// and echo it back for communication testing
 
 #include <ArduinoJson.h>
 
 // Variables to store received data
 float robot_x = 0;
 float robot_y = 0;
-float robot_theta = 0;
+float robot_theta = 0;  // Heading angle in degrees
 float distance = 0;
-float rel_angle = 0;
 
 // Counter to track number of messages received
 unsigned long msg_count = 0;
@@ -23,7 +22,7 @@ void setup() {
   }
   
   // Send startup message
-  Serial.println("Arduino ready for communication");
+  Serial.println("Arduino ready for position and heading tracking");
   Serial.println("Waiting for data from Python...");
 }
 
@@ -48,18 +47,18 @@ void loop() {
     }
     
     // Extract values
-    if (doc.containsKey("x") && doc.containsKey("y") && doc.containsKey("theta")) {
+    if (doc.containsKey("x") && doc.containsKey("y")) {
       robot_x = doc["x"];
       robot_y = doc["y"];
-      robot_theta = doc["theta"];
       
-      // Check for additional navigation data
-      if (doc.containsKey("distance")) {
-        distance = doc["distance"];
+      // Get heading angle if available
+      if (doc.containsKey("theta")) {
+        robot_theta = doc["theta"];
       }
       
-      if (doc.containsKey("rel_angle")) {
-        rel_angle = doc["rel_angle"];
+      // Check for distance value
+      if (doc.containsKey("distance")) {
+        distance = doc["distance"];
       }
       
       // Increment message counter
@@ -68,23 +67,25 @@ void loop() {
       // Send confirmation back to Python
       Serial.print("MSG #");
       Serial.print(msg_count);
-      Serial.print(": X=");
+      Serial.print(": Position(");
       Serial.print(robot_x, 3);
-      Serial.print(", Y=");
+      Serial.print(", ");
       Serial.print(robot_y, 3);
-      Serial.print(", Theta=");
+      Serial.print("), Heading=");
       Serial.print(robot_theta, 1);
+      Serial.print("°");
       
-      // Include additional data if available
-      if (doc.containsKey("distance") && doc.containsKey("rel_angle")) {
+      // Include distance if available
+      if (doc.containsKey("distance")) {
         Serial.print(", Dist=");
         Serial.print(distance, 3);
-        Serial.print("m, Angle=");
-        Serial.print(rel_angle, 1);
-        Serial.println("°");
+        Serial.println("m");
       } else {
-        Serial.println("°");
+        Serial.println();
       }
+      
+      // You could add more processing here to respond to the position and heading
+      // For example, calculate navigation commands, print direction indicators, etc.
     }
   }
   
