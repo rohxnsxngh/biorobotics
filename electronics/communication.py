@@ -4,56 +4,12 @@ from pupil_apriltags import Detector
 import tkinter as tk
 from threading import Thread
 import time
-import serial
 import json
+import requests  # For HTTP communication
 
-# Serial communication setup
-SERIAL_PORT = 'COM3'  # Change to your Arduino port
-BAUD_RATE = 9600
-arduino = None
-
-def initialize_arduino():
-    global arduino
-    try:
-        arduino = serial.Serial(port=SERIAL_PORT, baudrate=BAUD_RATE, timeout=1)
-        time.sleep(2)  # Wait for connection to establish
-        print(f"Connected to Arduino on {SERIAL_PORT}")
-        return True
-    except Exception as e:
-        print(f"Failed to connect to Arduino: {e}")
-        return False
-
-# Function to send data to Arduino
-def send_to_arduino(data_dict):
-    if arduino is None or not arduino.is_open:
-        return False
-    
-    # Convert dict to JSON string
-    json_data = json.dumps(data_dict)
-    
-    # Add newline for Arduino parsing
-    message = json_data + "\n"
-    
-    try:
-        arduino.write(message.encode('utf-8'))
-        return True
-    except Exception as e:
-        print(f"Error sending data to Arduino: {e}")
-        return False
-
-# Function to read from Arduino
-def read_from_arduino():
-    if arduino is None or not arduino.is_open:
-        return None
-    
-    if arduino.in_waiting > 0:
-        try:
-            line = arduino.readline().decode('utf-8').strip()
-            return line
-        except Exception as e:
-            print(f"Error reading from Arduino: {e}")
-    
-    return None
+# CMU WiFi communication setup
+ARDUINO_IP = "172.21.25.132"  # Your registered IP address
+ARDUINO_URL = f"http://{ARDUINO_IP}"
 
 # Initialize AprilTag detector
 detector = Detector(families='tag36h11',
@@ -65,7 +21,7 @@ detector = Detector(families='tag36h11',
                     debug=0)
 
 # Replace with your phone's IP address and port or use 0 for webcam
-url = 'http://172.26.76.128:4747/video'
+url = 'http://172.26.0.244:4747/video'
 # Uncomment the line below to use webcam
 # cap = cv2.VideoCapture(0)
 cap = cv2.VideoCapture(url)
@@ -91,6 +47,43 @@ shared_data = {
     'send_interval': 0.5,  # Send data every 0.5 seconds
     'last_send_time': 0
 }
+
+# Function to test connection to Arduino
+def initialize_arduino():
+    global arduino_connected
+    try:
+        # Test connection by sending a small JSON packet
+        response = requests.post(ARDUINO_URL, json={"test": "connection"}, timeout=3)
+        if response.status_code == 200:
+            print(f"Connected to Arduino at {ARDUINO_URL}")
+            shared_data['arduino_connected'] = True
+            return True
+        else:
+            print(f"Arduino responded with status code: {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"Failed to connect to Arduino: {e}")
+        return False
+
+# Function to send data to Arduino
+def send_to_arduino(data_dict):
+    if not shared_data.get('arduino_connected', False):
+        return False
+    
+    try:
+        response = requests.post(ARDUINO_URL, json=data_dict, timeout=1)
+        if response.status_code == 200:
+            try:
+                return response.json()  # Return the Arduino's response
+            except:
+                return True  # Connection worked but couldn't parse JSON
+        else:
+            print(f"Error: Arduino responded with status code {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"Error sending data to Arduino: {e}")
+        shared_data['arduino_connected'] = False  # Mark as disconnected
+        return False
 
 # Function to calculate heading from tag corners
 def calculate_heading_from_corners(corners, coord_system):
@@ -153,7 +146,6 @@ def run_status_window():
     # Auto-connect to Arduino
     def auto_connect_arduino():
         if initialize_arduino():
-            shared_data['arduino_connected'] = True
             connection_label.config(text="Arduino: Connected", fg="green")
             print("Arduino connected automatically")
         else:
@@ -207,21 +199,13 @@ def arduino_communication_thread():
         current_time = time.time()
         
         # Only proceed if Arduino is connected
-        if shared_data.get('arduino_connected', False) and arduino and arduino.is_open:
-            # Read from Arduino
-            response = read_from_arduino()
-            if response:
-                shared_data['arduino_response'] = response
-                print(f"Arduino says: {response}")  # Print to console as well
-            
+        if shared_data.get('arduino_connected', False):
             # Send data to Arduino if we have position data and enough time has passed
             if (current_time - last_time > shared_data['send_interval'] and 
                 shared_data.get('robot_pos') is not None):
                 
                 # Format data to send - X, Y coordinates and heading
                 x, y = shared_data['robot_pos']
-                theta = shared_data['robot_theta']
-                theta_deg = np.rad2deg(theta)
                 
                 # Calculate distance to target (using the x-axis length as our target)
                 x_axis_length = shared_data.get('x_axis_length', 0)
@@ -231,15 +215,29 @@ def arduino_communication_thread():
                 data = {
                     'x': round(x, 3),
                     'y': round(y, 3),
-                    'theta': round(theta_deg, 1),
                     'distance': round(distance_to_target, 3)
                 }
                 
                 # Send to Arduino
-                if send_to_arduino(data):
-                    shared_data['last_sent_data'] = f"X: {data['x']}, Y: {data['y']}, Theta: {data['theta']}°, Dist: {data['distance']}m"
+                response = send_to_arduino(data)
+                if response:
+                    shared_data['last_sent_data'] = f"X: {data['x']}, Y: {data['y']}, Dist: {data['distance']}m"
+                    if isinstance(response, dict):
+                        shared_data['arduino_response'] = f"Received: {response.get('msg_count', 'unknown')}"
                     last_time = current_time
                     print(f"Sent to Arduino: {shared_data['last_sent_data']}")  # Print to console
+                else:
+                    # Try to reconnect if sending failed
+                    if not shared_data.get('arduino_connected', False):
+                        if initialize_arduino():
+                            print("Reconnected to Arduino")
+        else:
+            # Try to connect to Arduino if not connected
+            if initialize_arduino():
+                print("Connected to Arduino")
+            else:
+                # Don't retry too frequently
+                time.sleep(5)
         
         # Sleep to prevent high CPU usage
         time.sleep(0.1)
@@ -427,11 +425,6 @@ finally:
     shared_data['running'] = False
     cap.release()
     cv2.destroyAllWindows()
-    
-    # Close Arduino connection if open
-    if arduino and arduino.is_open:
-        arduino.close()
-        print("Arduino connection closed")
     
     # Give threads time to close
     time.sleep(0.5)
