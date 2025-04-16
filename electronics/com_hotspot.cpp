@@ -223,6 +223,14 @@ void loop() {
     Serial.print("Arduino heartbeat - Motors ");
     Serial.println(dataReceived ? "active" : "disabled, waiting for data");
     last_heartbeat = millis();
+
+    // Print network information
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
+    Serial.print("Signal strength (RSSI): ");
+    Serial.print(WiFi.RSSI());
+    Serial.println(" dBm");
+    Serial.print("Connection status: ");
   }
 }
 

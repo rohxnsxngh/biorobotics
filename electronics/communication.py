@@ -7,8 +7,8 @@ import time
 import json
 import requests  # For HTTP communication
 
-# CMU WiFi communication setup
-ARDUINO_IP = "172.21.25.132"  # Your registered IP address
+# Updated WiFi communication setup for the hotspot
+ARDUINO_IP = "172.20.10.6"  # New IP address from your Arduino
 ARDUINO_URL = f"http://{ARDUINO_IP}"
 
 # Initialize AprilTag detector
@@ -21,7 +21,7 @@ detector = Detector(families='tag36h11',
                     debug=0)
 
 # Replace with your phone's IP address and port or use 0 for webcam
-url = 'http://172.26.0.244:4747/video'
+url = 'http://172.26.76.128:4747/video'
 # Uncomment the line below to use webcam
 # cap = cv2.VideoCapture(0)
 cap = cv2.VideoCapture(url)
@@ -50,7 +50,6 @@ shared_data = {
 
 # Function to test connection to Arduino
 def initialize_arduino():
-    global arduino_connected
     try:
         # Test connection by sending a small JSON packet
         response = requests.post(ARDUINO_URL, json={"test": "connection"}, timeout=3)
@@ -143,6 +142,10 @@ def run_status_window():
     response_label = tk.Label(main_frame, text="Response: None", font=("Arial", 12))
     response_label.pack(pady=5)
     
+    # Display Arduino IP address
+    ip_label = tk.Label(main_frame, text=f"Arduino IP: {ARDUINO_IP}", font=("Arial", 12))
+    ip_label.pack(pady=5)
+    
     # Auto-connect to Arduino
     def auto_connect_arduino():
         if initialize_arduino():
@@ -150,6 +153,8 @@ def run_status_window():
             print("Arduino connected automatically")
         else:
             print("Failed to auto-connect to Arduino")
+            # Retry connection after 5 seconds
+            status_root.after(5000, auto_connect_arduino)
     
     # Schedule auto-connect after 2 seconds
     status_root.after(2000, auto_connect_arduino)
@@ -194,6 +199,8 @@ def run_status_window():
 # Thread function to handle Arduino communication
 def arduino_communication_thread():
     last_time = time.time()
+    reconnect_attempts = 0
+    max_reconnect_attempts = 5
     
     while shared_data['running']:
         current_time = time.time()
@@ -225,19 +232,35 @@ def arduino_communication_thread():
                     if isinstance(response, dict):
                         shared_data['arduino_response'] = f"Received: {response.get('msg_count', 'unknown')}"
                     last_time = current_time
+                    reconnect_attempts = 0  # Reset reconnect attempts on successful communication
                     print(f"Sent to Arduino: {shared_data['last_sent_data']}")  # Print to console
                 else:
                     # Try to reconnect if sending failed
                     if not shared_data.get('arduino_connected', False):
-                        if initialize_arduino():
-                            print("Reconnected to Arduino")
+                        reconnect_attempts += 1
+                        if reconnect_attempts <= max_reconnect_attempts:
+                            print(f"Attempting to reconnect to Arduino ({reconnect_attempts}/{max_reconnect_attempts})")
+                            if initialize_arduino():
+                                print("Reconnected to Arduino")
+                                reconnect_attempts = 0
+                        else:
+                            print(f"Max reconnection attempts reached. Will retry in 30 seconds.")
+                            time.sleep(30)
+                            reconnect_attempts = 0
         else:
             # Try to connect to Arduino if not connected
             if initialize_arduino():
                 print("Connected to Arduino")
+                reconnect_attempts = 0
             else:
                 # Don't retry too frequently
-                time.sleep(5)
+                reconnect_attempts += 1
+                if reconnect_attempts > max_reconnect_attempts:
+                    print(f"Failed to connect after {max_reconnect_attempts} attempts. Will retry in 30 seconds.")
+                    time.sleep(30)
+                    reconnect_attempts = 0
+                else:
+                    time.sleep(5)
         
         # Sleep to prevent high CPU usage
         time.sleep(0.1)
@@ -279,7 +302,7 @@ try:
         # Display Arduino connection status
         arduino_status = "Connected" if shared_data.get('arduino_connected', False) else "Not Connected"
         arduino_color = (0, 255, 0) if shared_data.get('arduino_connected', False) else (0, 0, 255)
-        cv2.putText(frame, f"Arduino: {arduino_status}", 
+        cv2.putText(frame, f"Arduino: {arduino_status} ({ARDUINO_IP})", 
                     (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 
                     0.7, arduino_color, 2)
         
