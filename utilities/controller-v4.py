@@ -17,7 +17,7 @@ detector = Detector(families='tag36h11',
                     debug=0)
 
 # Replace with your phone's IP address and port
-url = 'http://172.26.46.85:4747/video'
+url = 'http://192.168.4.2:4747/video'
 cap = cv2.VideoCapture(url)
 
 # Camera parameters
