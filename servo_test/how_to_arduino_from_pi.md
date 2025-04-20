@@ -4,6 +4,9 @@ This markdown file details the process of controlling a servo using an Arduino c
 ```bash
 sudo apt update
 sudo apt install python3-serial
+sudo apt update
+sudo apt install vim
+
 ```
 
 # install arduino-cli
