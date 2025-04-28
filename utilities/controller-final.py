@@ -382,8 +382,8 @@ while True:
             frame[frame.shape[0]-h:frame.shape[0], frame.shape[1]-w:frame.shape[1]] = plot_img
     
     # Display the frame
-    # cv2.namedWindow('AprilTag Navigation System', cv2.WINDOW_NORMAL)
-    # cv2.setWindowProperty('AprilTag Navigation System', cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+    cv2.namedWindow('AprilTag Navigation System', cv2.WINDOW_NORMAL)
+    cv2.setWindowProperty('AprilTag Navigation System', cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
     cv2.imshow('AprilTag Navigation System', frame)
     
     if cv2.waitKey(1) & 0xFF == ord('q'):
