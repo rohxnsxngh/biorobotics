@@ -30,13 +30,13 @@ if not cap.isOpened():
     exit()
 
 # Camera parameters
-fx, fy = 800, 800
-cx, cy = 320, 240
+fx, fy = 1280, 720  # These should match your camera's resolution if possible
+cx, cy = 640, 360   # Half of the resolution values above
 camera_params = [fx, fy, cx, cy]
 tag_size = 0.05  # 5cm - adjust to your actual tag size
 
-# Define the coordinate system reference (now using tags 1 and 7)
-coordinate_system_pair = (1, 7)
+# Define the coordinate system reference (now using tags 0 and 7)
+coordinate_system_pair = (0, 7)
 
 # PID Controller Parameters from the trajectory calculation function
 dt = 0.1
@@ -173,27 +173,24 @@ while True:
     # Filter for our tags and organize by ID
     target_tags = {}
     for r in results:
-        # Now looking for tags 1-7 (was 0-5 in original script)
-        if r.tag_id in [1, 2, 3, 4, 5, 6, 7]:
+        # Now looking for tags 0-7
+        if r.tag_id in [0, 1, 2, 3, 4, 5, 6, 7]:
             target_tags[r.tag_id] = r
     
     # Display how many of our target tags were found
-    cv2.putText(frame, f"Target tags found: {len(target_tags)}/{7}", 
+    cv2.putText(frame, f"Target tags found: {len(target_tags)}/{8}", 
                 (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 
                 0.7, (0, 255, 255), 2)
     
     # Draw detection results
-    # Colors for tags 1, 2, 3, 4, 5, 6, 7
+    # Colors for tags 0, 1, 2, 3, 4, 5, 6, 7
     tag_colors = [(0, 0, 255), (0, 255, 0), (255, 0, 0), 
-                 (255, 255, 0), (255, 0, 255), (0, 255, 255), (255, 255, 255)]
+                 (255, 255, 0), (255, 0, 255), (0, 255, 255), (128, 128, 128), (255, 255, 255)]
     
     # Store tag centers for drawing connections
     tag_centers = {}
     
     for tag_id, r in target_tags.items():
-        # Adjust tag ID to match color array (subtract 1 because we start at tag 1 now)
-        color_idx = tag_id - 1
-        
         # Extract tag corners and center
         pts = r.corners.astype(np.int32).reshape((-1, 1, 2))
         center = np.mean(pts, axis=0).astype(int)[0]
@@ -202,7 +199,7 @@ while True:
         tag_centers[tag_id] = center
         
         # Draw tag outline with specific color based on ID
-        color = tag_colors[color_idx] if color_idx < len(tag_colors) else (255, 255, 255)
+        color = tag_colors[tag_id] if tag_id < len(tag_colors) else (255, 255, 255)
         cv2.polylines(frame, [pts], True, color, 2)
         
         # Draw tag ID
@@ -214,42 +211,42 @@ while True:
         # Draw center point
         cv2.circle(frame, (center[0], center[1]), 3, color, -1)
     
-    # Draw connecting lines between tags 2-3-4-5-6 (the tail)
-    connection_pairs = [(2, 3), (3, 4), (4, 5), (5, 6)]
+    # Draw connecting lines between tags 1-2-3-4-5-6 (the tail)
+    connection_pairs = [(1, 2), (2, 3), (3, 4), (4, 5), (5, 6)]
     for start_id, end_id in connection_pairs:
         if start_id in tag_centers and end_id in tag_centers:
             # Draw the connection line
             start_center = tag_centers[start_id]
             end_center = tag_centers[end_id]
             
-            # Draw a thicker cyan line to represent the connection
+            # Draw a thicker yellow line to represent the connection
             cv2.line(frame, tuple(start_center), tuple(end_center), (255, 255, 0), 3)  # Yellow
     
-    # Check if we have our coordinate system reference tags (now using tags 1 and 7)
+    # Check if we have our coordinate system reference tags (now using tags 0 and 7)
     new_coordinate_system = False
-    if 1 in target_tags and 7 in target_tags:
-        tag1 = target_tags[1]
+    if 0 in target_tags and 7 in target_tags:
+        tag0 = target_tags[0]
         tag7 = target_tags[7]
         
         # Get centers
-        center1 = np.mean(tag1.corners, axis=0).astype(int)
+        center0 = np.mean(tag0.corners, axis=0).astype(int)
         center7 = np.mean(tag7.corners, axis=0).astype(int)
         
         # Draw thicker line to represent the X-axis of new coordinate system
-        cv2.line(frame, tuple(center1), tuple(center7), (0, 0, 0), 3)  # Thick black line
-        cv2.line(frame, tuple(center1), tuple(center7), (255, 255, 255), 1)  # White overlay
+        cv2.line(frame, tuple(center0), tuple(center7), (0, 0, 0), 3)  # Thick black line
+        cv2.line(frame, tuple(center0), tuple(center7), (255, 255, 255), 1)  # White overlay
         
         # Calculate 3D distance if pose information is available
-        if hasattr(tag1, 'pose_t') and hasattr(tag7, 'pose_t') and tag1.pose_t is not None and tag7.pose_t is not None:
+        if hasattr(tag0, 'pose_t') and hasattr(tag7, 'pose_t') and tag0.pose_t is not None and tag7.pose_t is not None:
             # Extract 3D positions
-            pos1 = tag1.pose_t.reshape(3)
+            pos0 = tag0.pose_t.reshape(3)
             pos7 = tag7.pose_t.reshape(3)
             
             # Calculate 3D Euclidean distance - this is our X-axis length
-            x_axis_length = np.linalg.norm(pos7 - pos1)
+            x_axis_length = np.linalg.norm(pos7 - pos0)
             
-            # Calculate unit vector from tag1 to tag7 (X-axis direction)
-            x_axis_dir = (pos7 - pos1) / x_axis_length
+            # Calculate unit vector from tag0 to tag7 (X-axis direction)
+            x_axis_dir = (pos7 - pos0) / x_axis_length
             
             # Create a Y-axis direction perpendicular to X-axis and camera Z
             z_axis = np.array([0, 0, 1])
@@ -258,7 +255,7 @@ while True:
             
             # Display coordinate system information
             cv2.putText(frame, f"X-axis length: {x_axis_length:.3f}m", 
-                        (int((center1[0] + center7[0]) / 2), int((center1[1] + center7[1]) / 2) - 15), 
+                        (int((center0[0] + center7[0]) / 2), int((center0[1] + center7[1]) / 2) - 15), 
                         cv2.FONT_HERSHEY_SIMPLEX, 
                         0.6, (255, 255, 255), 2)
             
@@ -266,7 +263,7 @@ while True:
             
             # Create coordinate transformation data
             coord_system = {
-                'origin': pos1,  # Now tag 1 is the origin
+                'origin': pos0,  # Now tag 0 is the origin
                 'x_axis': x_axis_dir,
                 'y_axis': y_axis_dir,
                 'z_axis': np.cross(x_axis_dir, y_axis_dir)
@@ -280,13 +277,13 @@ while True:
     # Calculate positions in new coordinate system if established
     if new_coordinate_system:
         # Reference positions
-        origin_pos = (0, 0)  # Tag 1 is our origin now
+        origin_pos = (0, 0)  # Tag 0 is our origin now
         
         # Calculate positions of all tags in our new coordinate system
         for tag_id, tag in target_tags.items():
             tag_pos = tag.pose_t.reshape(3)
             
-            # Vector from origin (tag 1) to current tag
+            # Vector from origin (tag 0) to current tag
             rel_pos = tag_pos - coord_system['origin']
             
             # Project onto our new coordinate system
@@ -300,8 +297,8 @@ while True:
                         cv2.FONT_HERSHEY_SIMPLEX, 
                         0.5, (255, 255, 255), 2)
             
-            # Tag 2 will show the heading (similar to tag 4 in the original script)
-            if tag_id == 2:
+            # Tag 1 will show the heading (changed from tag 2 in the modified script)
+            if tag_id == 1:
                 robot_pos = (x_coord, y_coord)
                 
                 # Calculate robot orientation (theta)
@@ -385,6 +382,8 @@ while True:
             frame[frame.shape[0]-h:frame.shape[0], frame.shape[1]-w:frame.shape[1]] = plot_img
     
     # Display the frame
+    # cv2.namedWindow('AprilTag Navigation System', cv2.WINDOW_NORMAL)
+    # cv2.setWindowProperty('AprilTag Navigation System', cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
     cv2.imshow('AprilTag Navigation System', frame)
     
     if cv2.waitKey(1) & 0xFF == ord('q'):
