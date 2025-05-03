@@ -4,6 +4,7 @@ import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import matplotlib.patches as patches
 import math
 import sys
 
@@ -40,7 +41,8 @@ state = {
 rudder_angle = 0        # initial rudder angle (radians)
 tail_amplitude = 0      # initial tail amplitude
 time_elapsed = 0
-disturbance_force = 0   # Initial disturbance force
+disturbance_force = 0   # Initial lateral disturbance force
+horizontal_force = 0    # Initial horizontal force (renamed from speed_disturbance)
 apply_disturbance = False  # Flag to control when disturbance is applied
 
 trajectory = np.zeros((2, num_steps))  # 2 x num_steps trajectory array
@@ -86,13 +88,18 @@ def run_pid_controllers(state):
     prev_speed_error = e_v
     return rudder, tail_amp, ray1, ray2
 
-def update_state(state, rudder, tail_amp, disturbance_force):
+def update_state(state, rudder, tail_amp, disturbance_force, horizontal_force):
     # Apply the base motion model
     u_t = k_t * tail_amp**2
-    state['v'] = np.clip(u_t, 0, 1.5)
+    
+    # Apply horizontal force (negative value slows down the fish)
+    speed_effect = horizontal_force * dt if apply_disturbance else 0
+    state['v'] = np.clip(u_t - speed_effect, 0.1, 1.5)  # Minimum speed of 0.1 to prevent stalling
+    
+    # Update position with current velocity and heading
     state['x'] += state['v'] * np.cos(state['theta']) * dt
     
-    # Apply the disturbance force to the y-position only if active
+    # Apply the lateral disturbance force to the y-position only if active
     y_disturbance = disturbance_force * dt if apply_disturbance else 0
     state['y'] += state['v'] * np.sin(state['theta']) * dt + y_disturbance
     
@@ -133,7 +140,7 @@ ax.add_patch(body_circle)
 
 # Create tail as connected line segments - make tail longer
 num_tail_segments = 5
-tail_length = 2.0  # Increased total tail length from 1.2 to 2.0
+tail_length = 3.0  # Increased total tail length from 2.0 to 3.0
 segment_length = tail_length / num_tail_segments
 
 # Create line objects for tail segments
@@ -143,12 +150,9 @@ for i in range(num_tail_segments):
     x_start = -i * segment_length
     x_end = -(i+1) * segment_length
     # Create line segment (starts with a straight horizontal line)
-    segment = plt.Line2D([x_start, x_end], [0, 0], lw=4-i*0.5, color='b')  # Decreasing width
+    segment = plt.Line2D([x_start, x_end], [0, 0], lw=4, color='b')  # Fixed width for all segments
     tail_segments.append(segment)
     ax.add_line(segment)
-
-# Group all patches for easier transformation
-robot_patches = [body_circle] + tail_segments
 
 traj_line, = ax.plot([], [], 'r-', linewidth=1.5, label="Trajectory")
 ax.legend()
@@ -161,27 +165,57 @@ canvas.draw()
 disturbance_frame = tk.Frame(middle_frame, padx=10, pady=10)
 disturbance_frame.pack(fill=tk.X)
 
-disturbance_label = tk.Label(disturbance_frame, text="Disturbance Force:", font=("Arial", 12))
-disturbance_label.pack(side=tk.LEFT, padx=10)
+# First row - Lateral disturbance (Y direction)
+lateral_frame = tk.Frame(disturbance_frame)
+lateral_frame.pack(fill=tk.X, pady=5)
 
-def update_disturbance(val):
+lateral_label = tk.Label(lateral_frame, text="Lateral Force (Y):", font=("Arial", 12), width=16, anchor="w")
+lateral_label.pack(side=tk.LEFT, padx=10)
+
+def update_lateral_disturbance(val):
     global disturbance_force
     disturbance_force = float(val)
-    disturbance_value_label.config(text=f"Value: {disturbance_force:.2f}")
+    lateral_value_label.config(text=f"Value: {disturbance_force:.2f}")
 
-# Slider for disturbance control (-1.0 to 1.0)
-disturbance_slider = tk.Scale(disturbance_frame, from_=-1.0, to=1.0, resolution=0.1, 
-                           orient=tk.HORIZONTAL, length=400, command=update_disturbance)
-disturbance_slider.set(0)  # Initialize at 0
-disturbance_slider.pack(side=tk.LEFT, padx=10)
+# Slider for lateral disturbance control (-1.0 to 1.0)
+lateral_slider = tk.Scale(lateral_frame, from_=-1.0, to=1.0, resolution=0.1, 
+                           orient=tk.HORIZONTAL, length=400, command=update_lateral_disturbance)
+lateral_slider.set(0)  # Initialize at 0
+lateral_slider.pack(side=tk.LEFT, padx=10)
 
-# Label to display current disturbance value
-disturbance_value_label = tk.Label(disturbance_frame, text="Value: 0.00", font=("Arial", 12))
-disturbance_value_label.pack(side=tk.LEFT, padx=10)
+# Label to display current lateral disturbance value
+lateral_value_label = tk.Label(lateral_frame, text="Value: 0.00", font=("Arial", 12))
+lateral_value_label.pack(side=tk.LEFT, padx=10)
+
+# Second row - Horizontal disturbance (X direction) - Updated from Speed Force
+horizontal_frame = tk.Frame(disturbance_frame)
+horizontal_frame.pack(fill=tk.X, pady=5)
+
+horizontal_label = tk.Label(horizontal_frame, text="Horizontal Force (X):", font=("Arial", 12), width=16, anchor="w")
+horizontal_label.pack(side=tk.LEFT, padx=10)
+
+def update_horizontal_disturbance(val):
+    global horizontal_force
+    horizontal_force = float(val)
+    horizontal_value_label.config(text=f"Value: {horizontal_force:.2f}")
+
+# Slider for horizontal disturbance control (0 to 1.0)
+horizontal_slider = tk.Scale(horizontal_frame, from_=0, to=1.0, resolution=0.1, 
+                        orient=tk.HORIZONTAL, length=400, command=update_horizontal_disturbance)
+horizontal_slider.set(0)  # Initialize at 0
+horizontal_slider.pack(side=tk.LEFT, padx=10)
+
+# Label to display current horizontal disturbance value
+horizontal_value_label = tk.Label(horizontal_frame, text="Value: 0.00", font=("Arial", 12))
+horizontal_value_label.pack(side=tk.LEFT, padx=10)
+
+# Third row - Apply button
+button_frame = tk.Frame(disturbance_frame)
+button_frame.pack(fill=tk.X, pady=10)
 
 # Add a button to apply a single disturbance pulse and then reset
 def apply_disturbance_pulse():
-    global apply_disturbance, disturbance_force
+    global apply_disturbance, disturbance_force, horizontal_force
     
     # Apply the disturbance for 1 second
     apply_disturbance = True
@@ -193,22 +227,25 @@ def apply_disturbance_pulse():
     disturbance_button.config(state=tk.DISABLED, bg="red", text="Applying...")
     
 def reset_disturbance():
-    global apply_disturbance, disturbance_force
+    global apply_disturbance, disturbance_force, horizontal_force
     
     # Turn off disturbance
     apply_disturbance = False
     
-    # Reset slider and force value
-    disturbance_slider.set(0)
+    # Reset sliders and force values
+    lateral_slider.set(0)
+    horizontal_slider.set(0)
     disturbance_force = 0
-    update_disturbance(0)
+    horizontal_force = 0
+    update_lateral_disturbance(0)
+    update_horizontal_disturbance(0)
     
     # Re-enable the button
     disturbance_button.config(state=tk.NORMAL, bg="SystemButtonFace", text="Apply Disturbance")
 
-disturbance_button = tk.Button(disturbance_frame, text="Apply Disturbance", 
-                             command=apply_disturbance_pulse, font=("Arial", 12))
-disturbance_button.pack(side=tk.LEFT, padx=20)
+disturbance_button = tk.Button(button_frame, text="Apply Disturbance", 
+                               command=apply_disturbance_pulse, font=("Arial", 12), width=20)
+disturbance_button.pack(pady=5)
 
 # ------------------------- Servo Visualization -------------------------
 servo_canvas = tk.Canvas(bottom_frame, width=1000, height=300, bg="white")
@@ -265,7 +302,8 @@ def update_servo(angle, servo_index):
 current_step = 0
 
 def simulation_step():
-    global state, time_elapsed, current_step, trajectory, dt, disturbance_force
+    global state, time_elapsed, current_step, trajectory, dt, disturbance_force, horizontal_force
+    
     # Run simulation continuously by resetting when reaching end or boundary
     if state['x'] >= end[0]:
         # Reset position but keep other state variables
@@ -280,7 +318,7 @@ def simulation_step():
     
     # Run the simulation step
     rudder, tail_amp, ray1, ray2 = run_pid_controllers(state)
-    state_updated = update_state(state, rudder, tail_amp, disturbance_force)
+    state_updated = update_state(state, rudder, tail_amp, disturbance_force, horizontal_force)
     state.update(state_updated)
     
     # Update trajectory data for plotting
@@ -300,9 +338,6 @@ def simulation_step():
     prev_x, prev_y = state['x'], state['y']
     
     for i, segment in enumerate(tail_segments):
-        # Base position calculation
-        segment_length = tail_length / num_tail_segments
-        
         # Calculate wave pattern with increasing amplitude toward tail end
         wave_factor = tail_amp_deg * (i + 1) / num_tail_segments * 0.02  # Increased wave factor
         angle_offset = math.sin(2 * math.pi * 2 * (current_step * dt) + math.radians(45 * i)) * wave_factor
@@ -323,6 +358,36 @@ def simulation_step():
     # Update trajectory line
     if current_step < num_steps:
         traj_line.set_data(trajectory[0, :current_step+1], trajectory[1, :current_step+1])
+    
+    # Draw disturbance arrows - Moved this after trajectory update so arrows appear on top
+    if apply_disturbance:
+        # Clear any existing arrows
+        for artist in ax.get_children():
+            if isinstance(artist, patches.FancyArrow):
+                artist.remove()
+                
+        # Draw lateral force arrow (if needed)
+        if abs(disturbance_force) > 0.05:
+            lateral_dy = 0.6 * np.sign(disturbance_force)
+            ax.add_patch(patches.FancyArrow(
+                state['x'] - 0.5, state['y'], 0, lateral_dy,
+                width=0.05, head_width=0.2, head_length=0.2, 
+                fc='r', ec='r', alpha=0.7, zorder=10  # Added zorder to put above other elements
+            ))
+        
+        # Draw horizontal force arrow (if needed)
+        if horizontal_force > 0.05:
+            horizontal_dx = -0.6  # Backward force
+            ax.add_patch(patches.FancyArrow(
+                state['x'] + 0.8, state['y'], horizontal_dx, 0,  # Positioned further in front of the fish
+                width=0.05, head_width=0.2, head_length=0.2, 
+                fc='orange', ec='orange', alpha=0.7, zorder=10  # Added zorder to put above other elements
+            ))
+    else:
+        # Remove all arrows when not applying disturbance
+        for artist in ax.get_children():
+            if isinstance(artist, patches.FancyArrow):
+                artist.remove()
     
     canvas.draw()
     
